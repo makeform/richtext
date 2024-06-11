@@ -1,0 +1,18 @@
+div
+  style(type="text/css"): include:stylus index.styl
+  script(type="@plotdb/block"): include:lsc index.ls
+  .form-group.has-tips.manual(ld="base error-root",plug="widget")
+    div(ld="display", data-display="block"): label.d-flex.align-items-end.flex-wrap
+      div
+        span(ld="label")
+        span.variant.text-sm.ml-2 (#[span(ld="variant")])
+        span.text-danger.ml-2(ld="is-required") *
+      .flex-grow-1
+      .m-edit: .mf-note.text-sm(ld="limitation")
+    .text-sm.text-muted(ld="display", data-display="block"): div(ld="desc", style="margin:-.6em 0 .7em")
+    .m-edit.position-relative
+      div(ld="input")
+      .d-flex: .p-1.text-danger.rounded(ld-each="error")
+    .m-edit(ld="display",data-display="block"): .mf-note.text-sm.mt-2.note(ld-each="note")
+    .m-view.position-relative
+      .border.rounded-sm.p-2(ld="content")
