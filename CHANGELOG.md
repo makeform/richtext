@@ -1,5 +1,10 @@
 # Change Logs
 
+## v0.0.3
+
+ - remove color picker
+
+
 ## v0.0.2
 
  - tweak toolbar alignment

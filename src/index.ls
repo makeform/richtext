@@ -30,14 +30,11 @@ mod = ({root, ctx, data, parent, t}) ->
         toolbar:
           container: [
             [{ header: [1, 2, false] }],
-            <[color bold italic underline]>,
+            <[bold italic underline]> /* ++ <[color]> */,
             [{list: 'ordered'}, {list: 'bullet'}, {align: []}]
             <[link image]>
           ]
-
           handlers:
-            color: ~>
-
             image: ~>
               input = document.createElement \input
               input.setAttribute \type, \file
