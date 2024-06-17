@@ -1,5 +1,10 @@
 # Change Logs
 
+## v0.0.4
+
+ - set word-break to break-all to prevent content overflow 
+
+
 ## v0.0.3
 
  - remove color picker
