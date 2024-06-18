@@ -1,5 +1,10 @@
 # Change Logs
 
+## v0.0.5
+
+ - use italic style for `em`, and make `strong` bolder than default value.
+
+
 ## v0.0.4
 
  - set word-break to break-all to prevent content overflow 
