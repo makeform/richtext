@@ -1,5 +1,11 @@
 # Change Logs
 
+## v0.0.6
+
+ - workaround: @plotdb/csscope doesn't load quilljs css correctly. use programmatically approach to workaround.
+ - support image insertion by pasting, dragging along with a upload indicator
+
+
 ## v0.0.5
 
  - use italic style for `em`, and make `strong` bolder than default value.
