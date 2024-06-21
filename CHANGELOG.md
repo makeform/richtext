@@ -1,5 +1,10 @@
 # Change Logs
 
+## v0.0.7
+
+ - limit image size to maximal 100% width to prevent overflow
+
+
 ## v0.0.6
 
  - workaround: @plotdb/csscope doesn't load quilljs css correctly. use programmatically approach to workaround.
