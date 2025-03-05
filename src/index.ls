@@ -1,4 +1,15 @@
 quill-css = {}
+
+# adopted from word-len in @plotdb/form op internal function
+word-len = (v = "", method) ->
+  return if method == \simple-word =>
+    v.split(/\s|[,.;:!?，。；：︰！？、．　"]/).filter(->it)
+      .map ->
+        # segment by non-ascii codes
+        it.split(/[\u1000-\uffff]/).map(-> if it.length => 2 else 1).reduce(((a,b) -> a + b),0) - 1
+      .reduce(((a,b) -> a + b), 0)
+  else v.length
+
 module.exports =
   pkg:
     name: "@makeform/richtext", extend: {name: "@makeform/common"}
@@ -167,3 +178,29 @@ mod = ({root, ctx, data, parent, t}) ->
   adapt: (opt) ->
     @mod.child._upload = opt.upload
     @render!
+  opsets: [
+  * id: "richtext"
+    i18n: {}
+    convert: (v) -> return v
+    ops:
+      "image-count":
+        func: (v, c = {}) ->
+          list = ((v.json or {}).ops or []).filter -> it.insert and it.insert.image
+          if c.min? => if list.length < c.min => return false
+          if c.max? => if list.length > c.max => return false
+          return true
+        config:
+          min: {type: \number, hint: "minimal image count"}
+          max: {type: \number, hint: "maximal image count"}
+      "text-length":
+        func: (v, c = {}) ->
+          t = (v.text or '').trim!
+          len = word-len t, c.method
+          if c.min? => if len < c.min => return false
+          if c.max? => if len > c.max => return false
+          return true
+        config:
+          min: {type: \number, hint: "minimal char count"}
+          max: {type: \number, hint: "maximal char count"}
+          method: type: \choice, default: \char, values: <[char simple-word]>
+  ]

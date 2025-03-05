@@ -1,5 +1,10 @@
 # Change Logs
 
+## v0.0.8
+
+ - add dedicated `richtext` opset.
+
+
 ## v0.0.7
 
  - limit image size to maximal 100% width to prevent overflow
