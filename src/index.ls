@@ -167,7 +167,7 @@ mod = ({root, ctx, data, parent, t}) ->
   render: -> if @mod.child.view => @mod.child.view.render!
   is-empty: (v) ->
     v = @content(v)
-    return (typeof(v) == \undefined) or v == null or !v.text
+    return (typeof(v) == \undefined) or v == null or !((v.text or '').trim!)
   is-equal: (u, v) ->
     eu = @is-empty u
     ev = @is-empty v

@@ -1,5 +1,11 @@
 # Change Logs
 
+## v1.0.0 (upcoming)
+
+ - tweak DOM based on updated `@makeform/common` DOM structure.
+ - fix bug: empty test doesn't work for content containing only newline.
+
+
 ## v0.0.8
 
  - add dedicated `richtext` opset.
