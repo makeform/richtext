@@ -1,6 +1,6 @@
 # Change Logs
 
-## v1.0.0 (upcoming)
+## v0.1.0
 
  - tweak DOM based on updated `@makeform/common` DOM structure.
  - fix bug: empty test doesn't work for content containing only newline.
