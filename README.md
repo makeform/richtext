@@ -25,4 +25,5 @@ this widget provides one additional opset `richtext` with following 2 ops:
 
 ## License
 
-MIT
+@makeform/richtext is released under MIT License.
+QuillJS 2.0.2 is released under BSD-3 License. see LICENSE.Quill for more information.
