@@ -12,7 +12,9 @@ word-len = (v = "", method) ->
 
 module.exports =
   pkg:
-    name: "@makeform/richtext", extend: {name: "@makeform/common"}
+    name: \@makeform/richtext
+    extend: name: \@makeform/common
+    host: name: \@grantdash/composer
     i18n:
       en: {}
       "zh-TW": {}
@@ -20,22 +22,29 @@ module.exports =
     # quilljs uses css such as @support which isn't handled correctly by csscope.
     # this leads to incorrect list numbering (requires correct counter-reset style to solve)
     # which leads to separated list numbered as a single one.
-    # before we fix this issue in csscope, we resolve this problem programmatically.
+    # before we fix this issue in csscope, we have to load it programmatically ( see init func )
+    # however, we may have quill imported in other context,
+    # so we scope it in `mf-rictext-quill` class and put it in a separated quill.snow.css locally
+    # * name: \@makeform/richtext, path: "quill.snow.min.css", global: true
     * url: \https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js
     * name: "ldcolor", version: "main", path: "index.min.js", async: false
     * name: "@loadingio/ldcolorpicker", version: "main", path: "index.min.js"
     * name: "@loadingio/ldcolorpicker", version: "main", path: "index.min.css", global: true
     * name: \ldfile
     ]
-  init: (opt) -> opt.pubsub.fire \subinit, mod: mod(opt)
-mod = ({root, ctx, data, parent, t}) ->
+  init: (opt) ->
+    opt.pubsub.on \inited, (o = {}) ~> @ <<< o
+    opt.pubsub.fire \subinit, mod: mod.call @, opt
+
+mod = ({root, manager, ctx, data, parent, t}) ->
   {ldview, Quill, ldcolor, ldcolorpicker, ldfile} = ctx
   init: ->
     # workaround: @plotdb/csscope doesn't inject quill-css correctly so we do it here manually.
     if !quill-css.node =>
+      url = manager.get-url {name: \@makeform/richtext, path: \quill.snow.min.css}
       quill-css.node = link = document.createElement \link
       link.setAttribute \rel, \stylesheet
-      link.setAttribute \href, \https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css
+      link.setAttribute \href, url
       link.setAttribute \type, \text/css
       link.setAttribute \id, \_quilljs-css-element
       document.body.appendChild link

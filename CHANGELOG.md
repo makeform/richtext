@@ -1,5 +1,11 @@
 # Change Logs
 
+## v0.2.0
+
+ - add host `@grantdash/composer`
+ - inline Quill style to prevent it from affecting composer editor
+
+
 ## v0.1.0
 
  - tweak DOM based on updated `@makeform/common` DOM structure.

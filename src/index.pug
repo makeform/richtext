@@ -1,7 +1,9 @@
 div
-  style(type="text/css"): include:stylus index.styl
+  style(type="text/css")
+    include:stylus quill.snow.styl
+    include:stylus index.styl
   script(type="@plotdb/block"): include:lsc index.ls
-  div(plug="body")
+  div(plug="body"): .mf-richtext-quill
     .m-edit.position-relative
       div(ld="input")
       .d-flex: .p-1.text-danger.rounded(ld-each="error")
