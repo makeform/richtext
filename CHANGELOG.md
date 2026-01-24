@@ -1,5 +1,10 @@
 # Change Logs
 
+## v0.2.1
+
+ - use local quill lib
+
+
 ## v0.2.0
 
  - add host `@grantdash/composer`
