@@ -26,7 +26,8 @@ module.exports =
     # however, we may have quill imported in other context,
     # so we scope it in `mf-rictext-quill` class and put it in a separated quill.snow.css locally
     # * name: \@makeform/richtext, path: "quill.snow.min.css", global: true
-    * url: \https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js
+    * name: \quill, version: \main, path: \dist/quill.js
+    # or use cdn: https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js
     * name: "ldcolor", version: "main", path: "index.min.js", async: false
     * name: "@loadingio/ldcolorpicker", version: "main", path: "index.min.js"
     * name: "@loadingio/ldcolorpicker", version: "main", path: "index.min.css", global: true
