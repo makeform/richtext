@@ -1,5 +1,11 @@
 # Change Logs
 
+## v0.3.0
+
+ - support character hint feature
+ - fix incorrect description about text-length opset min / max options in README
+
+
 ## v0.2.1
 
  - use local quill lib

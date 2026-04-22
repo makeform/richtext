@@ -10,14 +10,52 @@ word-len = (v = "", method) ->
       .reduce(((a,b) -> a + b), 0)
   else v.length
 
+hint = (content, terms, t) ->
+  terms = (terms or []).filter -> it.opset == \richtext and it.op == \text-length
+  lc = {}
+  if !terms.length => return {invalid: false, text: ""}
+  list = terms.map (term) ->
+    {min, max, method} = term.config or {}
+    if min? => lc.min = (lc.min or 0) >? min
+    if max? => lc.max = (if !lc.max? => max else lc.max) <? max
+    count = word-len content, method
+    lc.count = count
+    [
+      if min? => count - min else undefined
+      if max? => max - count else undefined
+    ]
+  ret = [
+    Math.min.apply Math, list.map ->it.0
+    Math.min.apply Math, list.map ->it.1
+  ]
+  ret = if lc.min? and ret.0 < 0 => [-1, "#{t(\還差)} #{-ret.0} #{t(\字)}"]
+  else if lc.max? and ret.1 < 0 => [1, "#{t(\超過)} #{-ret.1} #{t(\字)}"]
+  else if lc.max? => [0, "#{t(\還剩)} #{ret.1} #{t(\字)}"]
+  else [0, "#{t(\已寫)} #{lc.count} #{t(\字)}"]
+  {invalid: !!ret.0, text: ret.1}
+
 module.exports =
   pkg:
     name: \@makeform/richtext
     extend: name: \@makeform/common
     host: name: \@grantdash/composer
     i18n:
-      en: {}
-      "zh-TW": {}
+      en:
+        "還差": "remaining to reach:"
+        "超過": "exceeded by:"
+        "還剩": "remaining:"
+        "已寫": "written:"
+        "字": "word(s)"
+        config:
+          hint: name: 'Character Count Hint', desc: "Show character count and limit hints."
+      "zh-TW":
+        "還差": "還差"
+        "超過": "超過"
+        "還剩": "還剩"
+        "已寫": "已寫"
+        "字": "字"
+        config:
+          hint: name: '字數提示', desc: "啟用字數提示"
     dependencies: [
     # quilljs uses css such as @support which isn't handled correctly by csscope.
     # this leads to incorrect list numbering (requires correct counter-reset style to solve)
@@ -36,6 +74,9 @@ module.exports =
   init: (opt) ->
     opt.pubsub.on \inited, (o = {}) ~> @ <<< o
     opt.pubsub.fire \subinit, mod: mod.call @, opt
+  client: (bid) ->
+    meta: config:
+      hint: enabled: type: \boolean, name: \config.hint.name, desc: \config.hint.desc
 
 mod = ({root, manager, ctx, data, parent, t}) ->
   {ldview, Quill, ldcolor, ldcolorpicker, ldfile} = ctx
@@ -56,7 +97,17 @@ mod = ({root, manager, ctx, data, parent, t}) ->
       quill.setContents(v.json or {})
     lc.view = view = new ldview do
       root: root
-      handler: content: ({node}) -> node.innerHTML = quill.root.innerHTML
+      handler:
+        content: ({node}) -> node.innerHTML = quill.root.innerHTML
+        remains: ({node}) ~>
+          enabled = !!(@mod.info.config.hint or {}).enabled
+          node.classList.toggle \d-none, !enabled
+          if !enabled => return node.textContent = ""
+          content = (quill.getText! or '').trim!
+          terms = @serialize!term
+          ret = hint content, terms, t
+          node.textContent = ret.text
+          node.classList.toggle \text-danger, !!ret.invalid
     progress = ->
     quill = new Quill view.get(\input), do
       theme: \snow
@@ -139,6 +190,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
       json = quill.getContents!
       html = quill.root.innerHTML
       @value {json, text, html}
+      view.render <[remains]>
       hash = {}
       list = d.ops
         .filter (o) -> uploader.need-upload (o.insert or {}).image
