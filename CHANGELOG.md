@@ -1,5 +1,10 @@
 # Change Logs
 
+## v0.4.0
+
+ - support image compression. enabled by default
+
+
 ## v0.3.0
 
  - support character hint feature
