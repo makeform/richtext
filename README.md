@@ -7,6 +7,11 @@ Richtext input widget. Based on Quilljs.
 
  - `hint`: an object controlling the character count hint display.
    - `enabled`: boolean, default `false`. when `true`, shows a small hint below the editor indicating how many characters remain or have been written, based on any active `text-length` term.
+ - `image`: an object controlling image handling behavior.
+   - `compress`: an object controlling image compression before upload. when omitted entirely, compression is enabled with default values.
+     - `enabled`: boolean, default `true`. when `false`, disables compression and uploads images as-is.
+     - `pixel`: number, default `1200`. maximum width or height in pixels. images exceeding this are scaled down proportionally.
+     - `filesize`: number, default `500`. maximum file size in KB after compression. quality is reduced via binary search until the image fits within this limit.
 
 
 ## Opset
