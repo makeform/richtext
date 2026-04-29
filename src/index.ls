@@ -1,4 +1,5 @@
 quill-css = {}
+console.log \working
 
 # adopted from word-len in @plotdb/form op internal function
 word-len = (v = "", method) ->
@@ -48,6 +49,11 @@ module.exports =
         "字": "word(s)"
         config:
           hint: name: 'Character Count Hint', desc: "Show character count and limit hints."
+          image:
+            compress:
+              enabled: name: 'Image Compression', desc: "Compress images before uploading. Default: enabled."
+              filesize: name: 'Max File Size (KB)', desc: "Maximum image size in KB after compression. Default: 500."
+              pixel: name: 'Max Dimension (px)', desc: "Maximum image width or height in pixels. Default: 1200."
       "zh-TW":
         "還差": "還差"
         "超過": "超過"
@@ -56,6 +62,11 @@ module.exports =
         "字": "字"
         config:
           hint: name: '字數提示', desc: "啟用字數提示"
+          image:
+            compress:
+              enabled: name: '圖片壓縮', desc: "上傳前壓縮圖片，預設啟用。"
+              filesize: name: '檔案大小上限 (KB)', desc: "壓縮後的圖片大小上限（KB），預設 500。"
+              pixel: name: '長邊像素上限 (px)', desc: "圖片寬或高的像素上限，預設 1200。"
     dependencies: [
     # quilljs uses css such as @support which isn't handled correctly by csscope.
     # this leads to incorrect list numbering (requires correct counter-reset style to solve)
@@ -77,10 +88,15 @@ module.exports =
   client: (bid) ->
     meta: config:
       hint: enabled: type: \boolean, name: \config.hint.name, desc: \config.hint.desc
+      image: compress:
+        enabled: type: \boolean, name: \config.image.compress.enabled.name, desc: \config.image.compress.enabled.desc
+        filesize: type: \number, name: \config.image.compress.filesize.name, desc: \config.image.compress.filesize.desc
+        pixel: type: \number, name: \config.image.compress.pixel.name, desc: \config.image.compress.pixel.desc
 
 mod = ({root, manager, ctx, data, parent, t}) ->
   {ldview, Quill, ldcolor, ldcolorpicker, ldfile} = ctx
   init: ->
+    self = @
     # workaround: @plotdb/csscope doesn't inject quill-css correctly so we do it here manually.
     if !quill-css.node =>
       url = manager.get-url {name: \@makeform/richtext, path: \quill.snow.min.css}
@@ -128,15 +144,62 @@ mod = ({root, manager, ctx, data, parent, t}) ->
                 ext = {}
                 files = input.files
                 if !(files and files.length) => return
-                files = [files.0]
+                file = files.0
                 input.value = null
                 key = uploader.key!
                 placeholder = "data:image/svg+xml;base64," + btoa("""<svg data-key="#key" #{uploader.loader}""")
                 sig = uploader.get-sig(placeholder)
                 uploader.sig[sig] = true
                 quill.insertEmbed quill.getSelection!index, \image, placeholder
-                upload-files(files.map((blob)->{blob, sig}), uploader.insert)
+                opts = compress-opts!
+                (if opts.enabled => compress-image(file, opts.pixel, opts.filesize) else Promise.resolve(file))
+                  .then (blob) ->
+                    upload-files([{blob, sig}], uploader.insert)
               input.click!
+
+    # Returns {enabled, pixel, filesize} from config.image.compress, with defaults applied.
+    compress-opts = ->
+      cfg = ((self.mod.info.config?.image or {}).compress) or {}
+      enabled: if cfg.enabled? => !!cfg.enabled else true
+      pixel: cfg.pixel or 1200
+      filesize: cfg.filesize or 500
+
+    # Compress image blob: resize to max `pixel` on longest side, JPEG, under `filesize` KB.
+    compress-image = (blob, pixel = 1200, filesize = 500) ->
+      new Promise (resolve, reject) ->
+        url = URL.createObjectURL blob
+        img = new Image!
+        img.onload = ->
+          URL.revokeObjectURL url
+          {width, height} = img
+          if width > pixel or height > pixel
+            if width >= height
+              height = Math.round height * pixel / width
+              width = pixel
+            else
+              width = Math.round width * pixel / height
+              height = pixel
+          canvas = document.createElement \canvas
+          canvas.width = width
+          canvas.height = height
+          ctx = canvas.getContext \2d
+          ctx.drawImage img, 0, 0, width, height
+          max-bytes = filesize * 1024
+          try-quality = (lo, hi, cb) ->
+            if hi - lo < 0.01
+              canvas.toBlob cb, 'image/jpeg', lo
+              return
+            mid = (lo + hi) / 2
+            canvas.toBlob (b) ->
+              if b.size <= max-bytes => cb b
+              else try-quality lo, mid, cb
+            , 'image/jpeg', mid
+          canvas.toBlob (b) ->
+            if b.size <= max-bytes => resolve b
+            else try-quality 0.1, 0.85, resolve
+          , 'image/jpeg', 0.85
+        img.onerror = reject
+        img.src = url
 
     #files contains object {file, ...} where
     #  - `blob`: the file blob
@@ -162,9 +225,13 @@ mod = ({root, manager, ctx, data, parent, t}) ->
       _ 0
 
     convert-images = (list) ->
+      opts = compress-opts!
       ps = list.map (o) ->
-        (r) <- ldfile.fromURL o.image, \blob .then _
-        {blob: r.file, sig: o.sig}
+        ldfile.fromURL o.image, \blob
+          .then (r) ->
+            if opts.enabled => compress-image r.file, opts.pixel, opts.filesize
+            else Promise.resolve r.file
+          .then (blob) -> {blob, sig: o.sig}
       Promise.all ps
 
     uploader =
