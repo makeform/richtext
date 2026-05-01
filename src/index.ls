@@ -1,5 +1,4 @@
 quill-css = {}
-console.log \working
 
 # adopted from word-len in @plotdb/form op internal function
 word-len = (v = "", method) ->

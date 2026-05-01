@@ -1,5 +1,10 @@
 # Change Logs
 
+## v0.4.1
+
+ - remove unnecessary log
+
+
 ## v0.4.0
 
  - support image compression. enabled by default
