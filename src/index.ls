@@ -222,7 +222,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
 
     check-image-terms = (meta) ->
       ts = (self._meta?.term or []).filter (term) ->
-        term.op?.id in <[long-side short-side width height pixel-count]>
+        term.op?.id in <[long-side short-side width height pixel-count file-size]>
       if !ts.length => return Promise.resolve!
       ps = ts.map (term) -> term.validate {images: [meta]}
       Promise.all(ps).then (rets) ->
@@ -383,6 +383,16 @@ mod = ({root, manager, ctx, data, parent, t}) ->
           min: {type: \number, hint: "minimal char count"}
           max: {type: \number, hint: "maximal char count"}
           method: type: \choice, default: \char, values: <[char simple-word]>
+      "file-size":
+        func: (v = {}, c = {}) ->
+          imgs = if Array.isArray(v) => v else (v?.images or [])
+          !imgs.filter(->
+            kb = it.size / 1024
+            (c.min? and kb < c.min) or (c.max? and kb > c.max)
+          ).length
+        config:
+          min: {type: \number, name: 'min-size', hint: "minimal file size in KB"}
+          max: {type: \number, name: 'max-size', hint: "maximal file size in KB"}
       "long-side": dim-op \long
       "short-side": dim-op \short
       "width": dim-op \width
