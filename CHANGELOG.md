@@ -1,5 +1,10 @@
 # Change Logs
 
+## v0.4.2
+
+ - support image ops in richtext opset.
+
+
 ## v0.4.1
 
  - remove unnecessary log

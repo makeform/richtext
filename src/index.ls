@@ -94,6 +94,7 @@ module.exports =
 
 mod = ({root, manager, ctx, data, parent, t}) ->
   {ldview, Quill, ldcolor, ldcolorpicker, ldfile} = ctx
+  image-meta = {}
   init: ->
     self = @
     # workaround: @plotdb/csscope doesn't inject quill-css correctly so we do it here manually.
@@ -107,6 +108,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
       document.body.appendChild link
     lc = @mod.child
     @on \change, (v = {}) ~>
+      (v.images or []).for-each (img) -> if img.url => image-meta[img.url] = img
       j = quill.getContents!
       if JSON.stringify(j) == JSON.stringify(v.json or {}) => return
       quill.setContents(v.json or {})
@@ -140,20 +142,24 @@ mod = ({root, manager, ctx, data, parent, t}) ->
               input.setAttribute \type, \file
               input.setAttribute \accept, 'image/png, image/gif, image/jpeg'
               input.onchange = ~>
-                ext = {}
                 files = input.files
                 if !(files and files.length) => return
                 file = files.0
                 input.value = null
-                key = uploader.key!
-                placeholder = "data:image/svg+xml;base64," + btoa("""<svg data-key="#key" #{uploader.loader}""")
-                sig = uploader.get-sig(placeholder)
-                uploader.sig[sig] = true
-                quill.insertEmbed quill.getSelection!index, \image, placeholder
+                sel = quill.getSelection!index
                 opts = compress-opts!
                 (if opts.enabled => compress-image(file, opts.pixel, opts.filesize) else Promise.resolve(file))
-                  .then (blob) ->
+                  .then (blob) -> get-image-meta(blob).then (meta) -> {blob, meta}
+                  .then ({blob, meta}) -> check-image-terms(meta).then -> {blob, meta}
+                  .then ({blob, meta}) ->
+                    key = uploader.key!
+                    placeholder = "data:image/svg+xml;base64," + btoa("""<svg data-key="#key" #{uploader.loader}""")
+                    sig = uploader.get-sig(placeholder)
+                    uploader.sig[sig] = true
+                    image-meta[sig] = meta
+                    quill.insertEmbed sel, \image, placeholder
                     upload-files([{blob, sig}], uploader.insert)
+                  .catch (e) -> alert e.message or '檔案規格不符'
               input.click!
 
     # Returns {enabled, pixel, filesize} from config.image.compress, with defaults applied.
@@ -200,6 +206,37 @@ mod = ({root, manager, ctx, data, parent, t}) ->
         img.onerror = reject
         img.src = url
 
+    get-image-meta = (blob) ->
+      new Promise (resolve, reject) ->
+        url = URL.createObjectURL blob
+        img = new Image!
+        img.onload = ->
+          URL.revokeObjectURL url
+          {width, height} = img
+          long  = width >? height
+          short = width <? height
+          pixels = width * height
+          resolve {width, height, long, short, pixels, size: blob.size}
+        img.onerror = reject
+        img.src = url
+
+    check-image-terms = (meta) ->
+      ts = (self._meta?.term or []).filter (term) ->
+        term.op?.id in <[long-side short-side width height pixel-count]>
+      if !ts.length => return Promise.resolve!
+      ps = ts.map (term) -> term.validate {images: [meta]}
+      Promise.all(ps).then (rets) ->
+        failed = rets.map((r,i) -> [r, ts[i]]).filter(->!it.0).map(->it.1)
+        if failed.length =>
+          msg = failed.map(-> it.msg or '檔案規格不符').join('; ')
+          return Promise.reject new Error(msg)
+
+    build-images = ->
+      nd = quill.getContents!
+      (nd.ops or [])
+        .filter (op) -> op.insert?.image and image-meta[op.insert.image]
+        .map (op) -> {url: op.insert.image} <<< image-meta[op.insert.image]
+
     #files contains object {file, ...} where
     #  - `blob`: the file blob
     #  - `...`: additional info which will be passed to `insert`.
@@ -230,11 +267,26 @@ mod = ({root, manager, ctx, data, parent, t}) ->
           .then (r) ->
             if opts.enabled => compress-image r.file, opts.pixel, opts.filesize
             else Promise.resolve r.file
-          .then (blob) -> {blob, sig: o.sig}
-      Promise.all ps
+          .then (blob) -> get-image-meta(blob).then (meta) -> {blob, meta}
+          .then ({blob, meta}) ->
+            check-image-terms(meta)
+              .then ->
+                image-meta[o.sig] = meta
+                {blob, sig: o.sig}
+              .catch (e) ->
+                nd = quill.getContents!
+                nd.ops = nd.ops.filter (op) ->
+                  o.sig != uploader.get-sig((op.insert or {}).image)
+                quill.setContents nd, \silent
+                alert e.message or '檔案規格不符'
+                null
+      Promise.all(ps).then (list) -> list.filter -> it
 
     uploader =
       insert: (o) ~>
+        if image-meta[o.sig] =>
+          image-meta[o.file.url] = image-meta[o.sig]
+          delete image-meta[o.sig]
         nd = quill.getContents!
         nd.ops
           .filter (op) -> o.sig == uploader.get-sig((op.insert or {}).image)
@@ -242,7 +294,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
         quill.setContents nd, \silent
         text = quill.getText!
         html = quill.root.innerHTML
-        @value {json: nd, text, html}
+        @value {json: nd, text, html, images: build-images!}
 
       hash: {}
       sig: {}
@@ -255,7 +307,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
       text = quill.getText!
       json = quill.getContents!
       html = quill.root.innerHTML
-      @value {json, text, html}
+      @value {json, text, html, images: build-images!}
       view.render <[remains]>
       hash = {}
       list = d.ops
@@ -279,7 +331,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
           json = quill.getContents!
           text = quill.getText!
           html = quill.root.innerHTML
-          @value {json, text, html}
+          @value {json, text, html, images: build-images!}
 
     node = root.querySelector('.ql-color')
     lc.ldcp = new ldcolorpicker(
@@ -310,7 +362,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
   * id: "richtext"
     i18n: {}
     convert: (v) -> return v
-    ops:
+    ops: do
       "image-count":
         func: (v, c = {}) ->
           list = ((v.json or {}).ops or []).filter -> it.insert and it.insert.image
@@ -331,4 +383,17 @@ mod = ({root, manager, ctx, data, parent, t}) ->
           min: {type: \number, hint: "minimal char count"}
           max: {type: \number, hint: "maximal char count"}
           method: type: \choice, default: \char, values: <[char simple-word]>
+      "long-side": dim-op \long
+      "short-side": dim-op \short
+      "width": dim-op \width
+      "height": dim-op \height
+      "pixel-count": dim-op \pixels
   ]
+
+dim-op = (k) ->
+  func: (v = {}, c = {}) ->
+    imgs = if Array.isArray(v) => v else (v?.images or [])
+    !imgs.filter(->!((!c.min? or it[k] >= (c.min or 0)) and (!c.max? or it[k] <= c.max))).length
+  config:
+    min: {type: \number, name: 'min-size', hint: "minimal size"}
+    max: {type: \number, name: 'max-size', hint: "maximal size"}
