@@ -1,5 +1,10 @@
 # Change Logs
 
+## v0.4.3
+
+ - add file-size op
+
+
 ## v0.4.2
 
  - support image ops in richtext opset.
