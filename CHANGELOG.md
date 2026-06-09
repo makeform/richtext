@@ -1,5 +1,10 @@
 # Change Logs
 
+## v0.4.4
+
+ - use @plotdb/quill for hotfix of XSS issue found in quill (<=2.0.3)
+
+
 ## v0.4.3
 
  - add file-size op
