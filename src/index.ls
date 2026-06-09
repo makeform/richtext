@@ -76,6 +76,7 @@ module.exports =
     # * name: \@makeform/richtext, path: "quill.snow.min.css", global: true
     # quill has XSS issues in <= 2.0.3; we hotfix in forked module
     * name: \@plotdb/quill, version: \main, path: \dist/quill.js
+    * name: "dompurify", version: \main, path: \dist/purify.min.js
     * name: "ldcolor", version: "main", path: "index.min.js", async: false
     * name: "@loadingio/ldcolorpicker", version: "main", path: "index.min.js"
     * name: "@loadingio/ldcolorpicker", version: "main", path: "index.min.css", global: true
@@ -93,7 +94,7 @@ module.exports =
         pixel: type: \number, name: \config.image.compress.pixel.name, desc: \config.image.compress.pixel.desc
 
 mod = ({root, manager, ctx, data, parent, t}) ->
-  {ldview, Quill, ldcolor, ldcolorpicker, ldfile} = ctx
+  {ldview, Quill, ldcolor, ldcolorpicker, ldfile, DOMPurify} = ctx
   image-meta = {}
   init: ->
     self = @
@@ -115,7 +116,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
     lc.view = view = new ldview do
       root: root
       handler:
-        content: ({node}) -> node.innerHTML = quill.root.innerHTML
+        content: ({node}) -> node.innerHTML = DOMPurify.sanitize quill.root.innerHTML
         remains: ({node}) ~>
           enabled = !!(@mod.info.config.hint or {}).enabled
           node.classList.toggle \d-none, !enabled
@@ -293,7 +294,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
           .map (op) -> op.insert.image = o.file.url
         quill.setContents nd, \silent
         text = quill.getText!
-        html = quill.root.innerHTML
+        html = DOMPurify.sanitize quill.root.innerHTML
         @value {json: nd, text, html, images: build-images!}
 
       hash: {}
@@ -306,7 +307,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
     quill.on \text-change, (d, od, src) ~>
       text = quill.getText!
       json = quill.getContents!
-      html = quill.root.innerHTML
+      html = DOMPurify.sanitize quill.root.innerHTML
       @value {json, text, html, images: build-images!}
       view.render <[remains]>
       hash = {}
@@ -330,7 +331,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
         .then ~>
           json = quill.getContents!
           text = quill.getText!
-          html = quill.root.innerHTML
+          html = DOMPurify.sanitize quill.root.innerHTML
           @value {json, text, html, images: build-images!}
 
     node = root.querySelector('.ql-color')

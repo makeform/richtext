@@ -1,5 +1,11 @@
 # Change Logs
 
+## v0.4.5
+
+ - sanitize quill html before using dompurify
+ - add additional dependencies
+
+
 ## v0.4.4
 
  - use @plotdb/quill for hotfix of XSS issue found in quill (<=2.0.3)
