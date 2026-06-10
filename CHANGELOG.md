@@ -1,5 +1,10 @@
 # Change Logs
 
+## v0.4.6
+
+ - remove unnecessary log
+
+
 ## v0.4.5
 
  - sanitize quill html before using dompurify
