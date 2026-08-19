@@ -1,14 +1,14 @@
 {
   "name": "@makeform/richtext",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "description": "",
   "scripts": {},
   "keywords": [],
   "author": "zbryikt",
   "license": "MIT",
   "devDependencies": {
-    "@plotdb/srcbuild": "^0.0.70",
-    "fedep": "^1.6.0",
+    "@plotdb/srcbuild": "^0.0.71",
+    "fedep": "^1.7.6",
     "stylus": "^0.55.0",
     "uglifycss": "^0.0.29"
   },
