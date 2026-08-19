@@ -1,5 +1,10 @@
 # Change Logs
 
+## v0.4.7
+
+ - upgrade dependencies
+
+
 ## v0.4.6
 
  - remove unnecessary log
