@@ -3,3 +3,7 @@
 node_modules
 *.log
 secret.*
+/context/shared
+# fedep output + symlinks to sibling blocks (see `npm run web:setup`)
+/web/static/assets/lib
+/web/.view

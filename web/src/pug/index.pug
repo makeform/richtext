@@ -1,0 +1,406 @@
+doctype html
+html
+  head
+    meta(charset="utf-8")
+    meta(name="viewport",content="width=device-width,initial-scale=1")
+    title @makeform/richtext test harness
+    script.
+      window.__errs = [];
+      window.addEventListener('error', function(e){
+        window.__errs.push((e.message||'') + ' @ ' + (e.filename||'').split('/').pop() + ':' + e.lineno);
+      });
+    +css([
+      {name: "@loadingio/ldcolorpicker"}
+    ])
+    style: :stylus
+      *
+        box-sizing: border-box
+      body
+        margin: 0
+        font-family: -apple-system, "Helvetica Neue", sans-serif
+        font-size: 14px
+        color: #222
+        background: #f4f5f7
+      .wrap
+        display: grid
+        grid-template-columns: 260px 1fr 420px
+        gap: 12px
+        padding: 12px
+        height: 100vh
+      .col
+        background: #fff
+        border: 1px solid #e2e4e8
+        border-radius: 6px
+        padding: 12px
+        overflow: auto
+      h2
+        margin: 0 0 8px
+        font-size: 13px
+        text-transform: uppercase
+        letter-spacing: .06em
+        color: #6a7280
+      .grp
+        border-top: 1px solid #eee
+        margin-top: 10px
+        padding-top: 10px
+        &:first-of-type
+          border-top: 0
+          margin-top: 0
+          padding-top: 0
+      button
+        display: block
+        width: 100%
+        margin: 4px 0
+        padding: 6px 8px
+        font-size: 13px
+        border: 1px solid #cfd3d9
+        border-radius: 4px
+        background: #fff
+        cursor: pointer
+        text-align: left
+        &:hover
+          background: #f0f2f5
+        &.on
+          background: #0067ad
+          border-color: #0067ad
+          color: #fff
+      label
+        display: flex
+        align-items: center
+        gap: 6px
+        margin: 4px 0
+        font-size: 13px
+      input[type=number]
+        width: 80px
+        padding: 3px 5px
+        border: 1px solid #cfd3d9
+        border-radius: 3px
+      pre
+        margin: 0
+        font-size: 11px
+        line-height: 1.45
+        white-space: pre-wrap
+        word-break: break-all
+      .state
+        font-size: 12px
+        line-height: 1.7
+        b
+          display: inline-block
+          min-width: 130px
+          color: #6a7280
+          font-weight: 400
+      .tag
+        display: inline-block
+        padding: 1px 6px
+        border-radius: 3px
+        font-size: 11px
+        background: #e8eaed
+        &.ok
+          background: #d6f2e4
+          color: #0a6b45
+        &.bad
+          background: #fadcdc
+          color: #a11
+        &.wait
+          background: #fdeecd
+          color: #8a5a00
+      #log
+        font-size: 11px
+        line-height: 1.5
+        font-family: ui-monospace, Menlo, monospace
+        div
+          padding: 1px 0
+          border-bottom: 1px solid #f2f2f2
+      .hint
+        font-size: 11px
+        color: #8a9099
+        line-height: 1.5
+        margin: 6px 0 0
+
+  body
+    .wrap
+      .col
+        h2 control
+        .grp
+          label
+            | upload delay
+            input#delay(type="number",value="1500",step="250",min="0")
+            | ms
+          button#fail fake upload: succeed
+          button#slow-net progress log: off
+        .grp
+          button#paste-1 simulate paste — 1 image
+          button#paste-3 simulate paste — 3 images
+          button#paste-big simulate paste — oversized image
+          p.hint dispatches a real paste event onto the editor, so quill sees source `user`.
+        .grp
+          button#mode-edit mode: edit
+          button#mode-view mode: view
+          button#mode-config mode: config
+        .grp
+          button#inject inject saved placeholder (dirty data)
+          button#check run formmgr check
+          button#submit try submit
+          p.hint “inject” pushes the exact delta you found in production, through the widget value.
+
+      .col
+        h2 widget
+        #widget
+
+      .col
+        h2 state
+        .state#state
+        h2(style="margin-top:14px") value
+        pre#value
+        h2(style="margin-top:14px") log
+        #log
+
+    //- order matters: proxise / semver / rescope / csscope are all needed by @plotdb/block
+    +script([
+      {name: "proxise"},
+      {name: "lderror"},
+      {name: "@loadingio/debounce.js"},
+      {name: "@plotdb/semver"},
+      {name: "@plotdb/rescope"},
+      {name: "@plotdb/csscope"},
+      {name: "@plotdb/block"},
+      {name: "@plotdb/form"},
+      {name: "ldview"}
+    ])
+    script: :lsc
+      # `+script` emits `defer`, so those libs run after this inline block. wait for them.
+      <~ window.addEventListener \DOMContentLoaded, _
+      lc =
+        delay: 1500
+        fail: false
+        verbose: false
+        n: 0
+        itf: null
+
+      log = (msg, cls = '') ->
+        node = document.querySelector \#log
+        d = document.createElement \div
+        t = new Date!toTimeString!substring(0,8)
+        d.innerHTML = "<span style='color:\#aaa'>#t</span> " + msg
+        if cls => d.style.color = cls
+        node.insertBefore d, node.firstChild
+        while node.children.length > 60 => node.removeChild node.lastChild
+
+      # ---- fake file api ------------------------------------------------------
+      # the real one is `@host.upload` in @grantdash/prj.tdb, which POSTs the blob and
+      # resolves with the stored file record. we only need `{url}` back.
+      fake-upload = ({file, progress}) ->
+        n = ++lc.n
+        log "upload ##n start — #{file.type}, #{Math.round(file.size/1024)}KB", \#0067ad
+        new Promise (res, rej) ->
+          t = 0
+          iv = setInterval (->
+            t += 100
+            if lc.verbose => log "upload ##n progress #{Math.round(100 * t / (lc.delay or 1))}%", \#999
+            if progress => progress {loaded: t, total: lc.delay}
+          ), 100
+          setTimeout (->
+            clearInterval iv
+            if lc.fail =>
+              log "upload ##n FAILED", \#a11
+              return rej(new Error "fake upload failed (##n)")
+            # a real http url: quill's sanitizer rewrites blob:/unknown protocols to `//:0`,
+            # so an object url would never survive into the document.
+            url = "/uploaded/#{(n % 8) + 1}.svg?up=#n"
+            log "upload ##n done", \#0a6b45
+            res {url, id: "fake-#n", name: file.name or "blob.jpg"}
+          ), lc.delay
+
+      # ---- block / form manager ----------------------------------------------
+      mgr = new block.manager registry: ({name, version, path, type}) ->
+        version = version or \main
+        path = path or (
+          if type == \block => \index.html
+          else if type => "index.min.#type"
+          else \index.min.js
+        )
+        "/assets/lib/#name/#version/#path"
+
+      fmgr = new form.manager!
+      window <<< {lc, mgr, fmgr}
+
+      meta =
+        title: "Rich text"
+        desc: "paste an image and watch what happens"
+        is-required: true
+        config:
+          hint: enabled: true
+          image: compress: {enabled: true, pixel: 1200, filesize: 500}
+
+      # ---- test images --------------------------------------------------------
+      make-image = (w, h, label) ->
+        cv = document.createElement \canvas
+        [cv.width, cv.height] = [w, h]
+        ctx = cv.getContext \2d
+        ctx.fillStyle = "hsl(#{(label * 67) % 360}, 70%, 60%)"
+        ctx.fillRect 0, 0, w, h
+        ctx.fillStyle = \#fff
+        ctx.font = "bold #{Math.round(h / 4)}px sans-serif"
+        ctx.textAlign = \center
+        ctx.fillText "#label", w / 2, h / 2 + h / 12
+        cv.toDataURL \image/png
+
+      # quill listens on paste; dispatching a real ClipboardEvent makes it go through
+      # the clipboard module, so text-change fires with source `user` - same as a human.
+      editor = -> document.querySelector '#widget .mf-richtext-quill .m-edit .ql-container .ql-editor'
+
+      paste-images = (n, size = 400) ->
+        root = editor!
+        if !root => return log "editor not ready", \#a11
+        html = [0 til n].map (i) -> "<img src='#{make-image size, size, i + 1}'>"
+        dt = new DataTransfer!
+        dt.setData \text/html, html.join('')
+        root.focus!
+        root.dispatchEvent new ClipboardEvent \paste, {clipboardData: dt, bubbles: true, cancelable: true}
+        log "pasted #n image(s) @ #{size}px"
+
+      # ---- helpers exposed for browser-driven checks --------------------------
+      ph-prefix = "data:image/svg+xml;base64,PHN2ZyBkYXRhLW1mLXBoPSIx"
+      classify = (u) ->
+        if !u => \EMPTY
+        else if u.indexOf(ph-prefix) == 0 => \PLACEHOLDER
+        else if u.indexOf("data:image/svg") == 0 => \OLD-PLACEHOLDER
+        else if u.indexOf("data:") == 0 => \DATAURL
+        else u
+
+      set-caret = (collapse-to-end) ->
+        root = editor!
+        root.focus!
+        sel = window.getSelection!
+        r = document.createRange!
+        r.selectNodeContents (if collapse-to-end => (root.lastElementChild or root) else root)
+        if collapse-to-end => r.collapse false
+        sel.removeAllRanges!
+        sel.addRange r
+
+      window.T =
+        ed: editor
+        classify: classify
+        paste: paste-images
+        type: (s) -> set-caret true; document.execCommand \insertText, false, s
+        clear: -> set-caret false; document.execCommand \delete
+        rmImage: (idx = 0) ->
+          # delete an image the way a user would: select it and press delete.
+          img = editor!querySelectorAll(\img)[idx]
+          if !img => return false
+          sel = window.getSelection!
+          r = document.createRange!
+          r.selectNode img
+          sel.removeAllRanges!
+          sel.addRange r
+          document.execCommand \delete
+          true
+        snap: ->
+          v = lc.itf.value! or {}
+          w: lc.itf.status!
+          f: fmgr.status!
+          e: JSON.stringify lc.itf.errors!
+          up: (lc.itf.mod.child or {}).uploading or 0
+          val: ((v.json or {}).ops or []).map (o) ->
+            if typeof(o.insert) == \string => JSON.stringify o.insert.substring(0, 14)
+            else classify o.insert.image
+          dom: Array.from(editor!querySelectorAll \img).map -> classify it.getAttribute \src
+
+      # ---- the exact dirty record found in production -------------------------
+      dirty-placeholder = "data:image/svg+xml;base64,PHN2ZyBkYXRhLWtleT0iMTc4NjY3OTAyOTg0NS0xamlvd2k1Y2UwemoiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgdmlld0JveD0iMCAwIDEwMCAxMDAiIHByZXNlcnZlQXNwZWN0UmF0aW89InhNaWRZTWlkIiB3aWR0aD0iOTYiIGhlaWdodD0iOTYiIHN0eWxlPSJiYWNrZ3JvdW5kOiNmYWZhZmEiPjxnPjxjaXJjbGUgc3Ryb2tlLWRhc2hhcnJheT0iMTMxLjk1IDQ1Ljk4IiByPSIyOCIgc3Ryb2tlLXdpZHRoPSI4IiBzdHJva2U9IiNkN2Q3ZDciIGZpbGw9Im5vbmUiIGN5PSI1MCIgY3g9IjUwIj48YW5pbWF0ZVRyYW5zZm9ybSBrZXlUaW1lcz0iMDsxIiB2YWx1ZXM9IjAgNTAgNTA7MzYwIDUwIDUwIiBkdXI9IjFzIiByZXBlYXRDb3VudD0iaW5kZWZpbml0ZSIgdHlwZT0icm90YXRlIiBhdHRyaWJ1dGVOYW1lPSJ0cmFuc2Zvcm0iPjwvYW5pbWF0ZVRyYW5zZm9ybT48L2NpcmNsZT48L2c+PC9zdmc+"
+
+      # ---- ui -----------------------------------------------------------------
+      $ = (s) -> document.querySelector s
+      on-click = (s, cb) -> $(s).addEventListener \click, cb
+
+      render-state = ->
+        itf = lc.itf
+        if !itf => return
+        badge = (s) ->
+          [cls, txt] = switch s
+          | 0 => [\ok, "0 valid"]
+          | 1 => [\wait, "1 init/empty"]
+          | 2 => [\bad, "2 invalid"]
+          | _ => [\wait, "#s"]
+          "<span class='tag #cls'>#txt</span>"
+        prog = fmgr.progress!
+        $('#state').innerHTML = """
+          <b>widget.status()</b> #{badge itf.status!}<br>
+          <b>widget.errors()</b> #{JSON.stringify itf.errors!}<br>
+          <b>widget.mode()</b> #{itf.mode!}<br>
+          <b>formmgr.status()</b> #{badge fmgr.status!}<br>
+          <b>formmgr.progress()</b> #{prog.done}/#{prog.total} (#{Math.round prog.percent * 100}%)
+            invalid: #{prog.invalid}<br>
+          <b>invalid-widgets()</b> #{fmgr.invalid-widgets!map(-> it.path).join(', ') or '-'}<br>
+          <b>uploading</b> #{(itf.mod?child or {}).uploading or 0}
+        """
+        v = itf.value! or {}
+        ops = ((v.json or {}).ops or [])
+        brief = ops.map (op) ->
+          if typeof(op.insert) == \string => {text: op.insert.substring(0, 40)}
+          else if (op.insert or {}).image? =>
+            u = op.insert.image
+            {image: if u.length > 60 => u.substring(0, 56) + "..." else u}
+          else op
+        $('#value').textContent = JSON.stringify({
+          ops: brief
+          images: (v.images or []).length
+          html: (v.html or '').substring(0, 200)
+        }, null, 1)
+
+      setInterval render-state, 300
+
+      on-click \#fail, ->
+        lc.fail = !lc.fail
+        it.target.textContent = "fake upload: #{if lc.fail => 'FAIL' else 'succeed'}"
+        it.target.classList.toggle \on, lc.fail
+      on-click \#slow-net, ->
+        lc.verbose = !lc.verbose
+        it.target.textContent = "progress log: #{if lc.verbose => 'on' else 'off'}"
+        it.target.classList.toggle \on, lc.verbose
+      $('#delay').addEventListener \change, -> lc.delay = +it.target.value
+
+      on-click \#paste-1, -> paste-images 1
+      on-click \#paste-3, -> paste-images 3
+      on-click \#paste-big, -> paste-images 1, 2400
+
+      <[edit view config]>.map (m) ->
+        on-click "\#mode-#m", ->
+          lc.itf.mode m
+          log "mode -> #m"
+
+      on-click \#inject, ->
+        lc.itf.value {
+          json: ops: [
+            * insert: "before "
+            * insert: image: dirty-placeholder
+            * insert: " after\n"
+          ]
+          text: "before  after\n"
+          html: "<p>before <img src='#dirty-placeholder'> after</p>"
+          images: []
+        }
+        log "injected saved placeholder"
+
+      on-click \#check, ->
+        fmgr.check null, {now: true, force: true} .then (r) ->
+          log "check done — invalid: #{(r or []).length}"
+
+      on-click \#submit, ->
+        fmgr.check null, {now: true, force: true} .then ->
+          if fmgr.status! != 0 =>
+            log "SUBMIT BLOCKED — formmgr.status = #{fmgr.status!}", \#a11
+          else log "submit ok", \#0a6b45
+
+      # ---- go -----------------------------------------------------------------
+      mgr.from {name: "@makeform/richtext", version: \main}, {root: $('#widget'), data: meta}
+        .then (o) ->
+          lc.itf = itf = o.interface
+          window.itf = itf
+          itf.adapt upload: fake-upload
+          fmgr.add {widget: itf, path: \rt}
+          itf.mode \edit
+          log "richtext ready"
+        .catch (e) ->
+          log "init failed: #{e.message or e}", \#a11
+          console.error e

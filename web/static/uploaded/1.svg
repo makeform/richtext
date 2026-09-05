@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <rect width="200" height="200" fill="hsl(47,65%,55%)"/>
+  <text x="100" y="118" font-family="sans-serif" font-size="70" font-weight="bold" fill="#fff" text-anchor="middle">1</text>
+  <text x="100" y="160" font-family="sans-serif" font-size="18" fill="#fff" text-anchor="middle" opacity=".8">uploaded</text>
+</svg>
