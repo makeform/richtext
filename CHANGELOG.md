@@ -1,5 +1,11 @@
 # Change Logs
 
+## v0.5.3
+
+ - treat content holding only images as non-empty: a required image-only field no longer
+   reports `required`, and such a value is now stored at all
+
+
 ## v0.5.2
 
  - fix: no longer drop placeholders of in-flight uploads when the value is written back

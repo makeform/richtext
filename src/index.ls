@@ -452,7 +452,12 @@ mod = ({root, manager, ctx, data, parent, t}) ->
   render: -> if @mod.child.view => @mod.child.view.render!
   is-empty: (v) ->
     v = @content(v)
-    return (typeof(v) == \undefined) or v == null or !((v.text or '').trim!)
+    if (typeof(v) == \undefined) or v == null => return true
+    if (v.text or '').trim! => return false
+    # `text` never contains embeds, so a field holding only pictures looks empty by text alone.
+    # that made a required image-only field report `required`, and worse: `is-equal` treats two
+    # empty values as identical, so such a value was never even stored.
+    !((v.json or {}).ops or []).some (op) -> (op.insert or {}).image?
   is-equal: (u, v) ->
     eu = @is-empty u
     ev = @is-empty v
