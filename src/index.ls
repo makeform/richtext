@@ -254,12 +254,38 @@ mod = ({root, manager, ctx, data, parent, t}) ->
         .filter (op) -> op.insert?.image and image-meta[op.insert.image]
         .map (op) -> {url: op.insert.image} <<< image-meta[op.insert.image]
 
-    # setContents replaces the whole document and drops the caret. keep it where it was, so an
-    # upload finishing while the user is still typing doesn't throw them back to the start.
-    set-contents = (nd) ->
-      sel = quill.getSelection!
-      quill.setContents nd, \silent
-      if sel => quill.setSelection sel.index, sel.length, \silent
+    # patch only the image embeds we care about, leaving the rest of the document retained.
+    # we used to rebuild everything with setContents from a snapshot taken before the async
+    # work started, which (a) dropped the caret and (b) raced with the user's own edits and
+    # with other uploads finishing around the same time - each writing back its stale snapshot.
+    # a delta touches nothing else, and quill transforms the selection for us.
+    #  - `pred(url)`: which image embeds to patch.
+    #  - `fn(delta, op)`: what to append to the delta for a matched op.
+    patch-images = (pred, fn) ->
+      Delta = Quill.import \delta
+      delta = new Delta!
+      found = false
+      (quill.getContents!ops or []).for-each (op) ->
+        url = (op.insert or {}).image
+        if typeof(url) == \string and pred(url) =>
+          found := true
+          fn delta, op
+        else delta.retain (if typeof(op.insert) == \string => op.insert.length else 1)
+      if !found => return false
+      quill.updateContents delta, \silent
+      true
+
+    replace-image = (sig, url) ->
+      patch-images(
+        (u) -> uploader.get-sig(u) == sig
+        (delta, op) -> delta.delete(1).insert({image: url}, op.attributes)
+      )
+
+    remove-images = (sigs) ->
+      patch-images(
+        (u) -> sigs.indexOf(uploader.get-sig u) >= 0
+        (delta) -> delta.delete 1
+      )
 
     # placeholder images are transient UI state, never data. filtering them here means a save
     # (or autosave) during an upload won't persist a loading spinner into the record, which
@@ -279,23 +305,14 @@ mod = ({root, manager, ctx, data, parent, t}) ->
     #files contains object {file, ...} where
     #  - `blob`: the file blob
     #  - `...`: additional info which will be passed to `insert`.
-    # `insert` accpets an object with `file`(from server) and `blob` (file object)
+    # `insert` accepts that same object plus `file`: the server's response for the blob.
     upload-files = (files = [], insert) ~>
-      ext = {}
       _ = (idx = 0) ~>
         file = files[idx]
         if !file => return Promise.resolve!
         @mod.child._upload {file: file.blob, progress}
           .then (f) ->
-            f = [{} <<< f <<< {blob: file.blob}]
-            (if ext.detail => ext.detail(f) else Promise.resolve f)
-          .then (f) ->
-            f = f.0
-            delete f.blob
-            if !lc.file => lc.file = []
-            else if !Array.isArray(lc.file) => lc.file = [lc.file]
-            lc.file.push f
-            if insert => insert file <<< {file: f}
+            if insert => insert file <<< {file: {} <<< f}
             _(idx + 1)
       # mark the widget as uploading so `validate` reports it as invalid, which blocks submit
       # while leaving local save untouched.
@@ -319,24 +336,20 @@ mod = ({root, manager, ctx, data, parent, t}) ->
                 image-meta[o.sig] = meta
                 {blob, sig: o.sig}
               .catch (e) ->
-                nd = quill.getContents!
-                nd.ops = nd.ops.filter (op) ->
-                  o.sig != uploader.get-sig((op.insert or {}).image)
-                set-contents nd
+                remove-images [o.sig]
                 alert e.message or '檔案規格不符'
                 null
       Promise.all(ps).then (list) -> list.filter -> it
 
     uploader =
       insert: (o) ~>
-        if image-meta[o.sig] =>
-          image-meta[o.file.url] = image-meta[o.sig]
-          delete image-meta[o.sig]
-        nd = quill.getContents!
-        nd.ops
-          .filter (op) -> o.sig == uploader.get-sig((op.insert or {}).image)
-          .map (op) -> op.insert.image = o.file.url
-        set-contents nd
+        meta = image-meta[o.sig]
+        delete image-meta[o.sig]
+        # the placeholder may be gone by now - the user can delete it while the upload is in
+        # flight. the file itself is already on the server (cleaning that up is the backend's
+        # business); what we must not do is re-insert an image the user removed, or keep its
+        # meta around for a url nothing references.
+        if replace-image(o.sig, o.file.url) and meta => image-meta[o.file.url] = meta
         @value build-value!
 
       hash: {}
@@ -377,12 +390,11 @@ mod = ({root, manager, ctx, data, parent, t}) ->
           sig = uploader.get-sig(placeholder)
           hash[image] = {sig, image, placeholder}
       if !list.length => return
-      # take the snapshot after the debounce, not before: anything typed in between would
-      # otherwise be overwritten by the setContents below.
       <~ debounce 0 .then _
-      nd = quill.getContents!
-      nd.ops.map (o) -> if (r = hash[(o.insert or {}).image]) => o.insert.image = r.placeholder
-      set-contents nd
+      patch-images(
+        (url) -> !!hash[url]
+        (delta, op) -> delta.delete(1).insert({image: hash[op.insert.image].placeholder}, op.attributes)
+      )
 
       convert-images list
         .then (list) ~> upload-files list, uploader.insert
@@ -390,11 +402,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
         .catch (e) ~>
           console.error e
           # drop only our own placeholders (matched by sig) so a concurrent batch is untouched.
-          sigs = list.map (.sig)
-          nd = quill.getContents!
-          nd.ops = nd.ops.filter (op) ->
-            sigs.indexOf(uploader.get-sig((op.insert or {}).image)) < 0
-          set-contents nd
+          remove-images list.map (.sig)
           @value build-value!
           alert e.message or '圖片上傳失敗'
 

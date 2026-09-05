@@ -1,5 +1,12 @@
 # Change Logs
 
+## v0.5.1
+
+ - patch image embeds with a delta instead of rebuilding the document with setContents
+ - keep an uploaded image out of the content if its placeholder was deleted mid-upload
+ - drop dead `lc.file` / `ext.detail` bookkeeping inherited from @makeform/upload
+
+
 ## v0.5.0
 
  - mark loading placeholder with `data-mf-ph` so it's never mistaken for a real image to upload
