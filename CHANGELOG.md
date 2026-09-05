@@ -1,35 +1,25 @@
 # Change Logs
 
-## v0.5.3
-
- - treat content holding only images as non-empty: a required image-only field no longer
-   reports `required`, and such a value is now stored at all
-
-
-## v0.5.2
-
- - fix: no longer drop placeholders of in-flight uploads when the value is written back
- - flag the widget as busy for the whole image pipeline, not just the upload itself
- - recognize placeholders written before the marker existed, and clean them out on load
- - write the cleaned document back so such a record is repaired on its next save
-
-
-## v0.5.1
-
- - patch image embeds with a delta instead of rebuilding the document with setContents
- - keep an uploaded image out of the content if its placeholder was deleted mid-upload
- - drop dead `lc.file` / `ext.detail` bookkeeping inherited from @makeform/upload
-
-
 ## v0.5.0
 
- - mark loading placeholder with `data-mf-ph` so it's never mistaken for a real image to upload
- - identify placeholder by its `data-key` instead of a truncated url, fixing signature collision
- - drop placeholders from stored data on load, and filter them out of the saved value
- - block upload in view mode and for non-user content changes; disable editor outside edit mode
- - report widget as invalid while uploading, so submit is blocked until uploads finish
- - keep caret across the internal setContents calls, and stop losing input typed during upload
- - remove stale placeholders and notify user when an upload fails
+ - features:
+   - report the widget as invalid while images are in flight, so submit is blocked until they
+     finish. local save is unaffected.
+ - bug fix:
+   - never re-upload our own loading placeholder. it now carries a `data-mf-ph` marker, and
+     placeholders written before that marker existed are recognized by their `data-key` shape.
+   - drop placeholders from stored data on load and from the saved value, and write the cleaned
+     document back so such a record is repaired on its next save
+   - don't upload in view mode or for non-user content changes; the editor is disabled outside
+     edit mode
+   - treat content holding only images as non-empty: a required image-only field no longer
+     reports `required`, and such a value is now stored at all
+   - keep the caret, and stop losing input typed while an upload is in flight
+   - remove stale placeholders and tell the user when an upload fails
+   - keep an uploaded image out of the content if its placeholder was deleted mid-upload
+ - tweaks:
+   - patch image embeds with a delta instead of rebuilding the document with setContents
+   - drop dead `lc.file` / `ext.detail` bookkeeping inherited from @makeform/upload
 
 
 ## v0.4.7

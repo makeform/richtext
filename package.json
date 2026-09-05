@@ -1,6 +1,6 @@
 {
   "name": "@makeform/richtext",
-  "version": "0.5.3",
+  "version": "0.5.0",
   "description": "",
   "scripts": {
     "build": "./build",
@@ -11,6 +11,9 @@
   "keywords": [],
   "author": "zbryikt",
   "license": "MIT",
+  "files": [
+    "LICENSE.Quill"
+  ],
   "devDependencies": {
     "@loadingio/debounce.js": "^1.0.1",
     "@loadingio/ldcolorpicker": "^3.0.6",
