@@ -1,5 +1,16 @@
 # Change Logs
 
+## v0.5.0
+
+ - mark loading placeholder with `data-mf-ph` so it's never mistaken for a real image to upload
+ - identify placeholder by its `data-key` instead of a truncated url, fixing signature collision
+ - drop placeholders from stored data on load, and filter them out of the saved value
+ - block upload in view mode and for non-user content changes; disable editor outside edit mode
+ - report widget as invalid while uploading, so submit is blocked until uploads finish
+ - keep caret across the internal setContents calls, and stop losing input typed during upload
+ - remove stale placeholders and notify user when an upload fails
+
+
 ## v0.4.7
 
  - upgrade dependencies

@@ -46,6 +46,7 @@ module.exports =
         "還剩": "remaining:"
         "已寫": "written:"
         "字": "word(s)"
+        "image-uploading": "Uploading image. Please wait until it's done."
         config:
           hint: name: 'Character Count Hint', desc: "Show character count and limit hints."
           image:
@@ -59,6 +60,7 @@ module.exports =
         "還剩": "還剩"
         "已寫": "已寫"
         "字": "字"
+        "image-uploading": "圖片上傳中，請稍候。"
         config:
           hint: name: '字數提示', desc: "啟用字數提示"
           image:
@@ -112,7 +114,17 @@ mod = ({root, manager, ctx, data, parent, t}) ->
       (v.images or []).for-each (img) -> if img.url => image-meta[img.url] = img
       j = quill.getContents!
       if JSON.stringify(j) == JSON.stringify(v.json or {}) => return
-      quill.setContents(v.json or {})
+      # `\silent`: this is an external value pushed in, not a user edit. without it quill fires
+      # text-change, which would (a) re-run upload detection over imported data-url images and
+      # (b) write back through @value, risking a change -> setContents -> change loop
+      # (currently only guarded by the fragile JSON compare above, since quill normalizes delta).
+      json = v.json or {}
+      # drop placeholders left in stored data (saved mid-upload, or written by an older version
+      # that had no marker): they aren't content, and a spinner that never resolves is worse
+      # than showing nothing. this also cleans such records up on their next save.
+      json.ops = (json.ops or []).filter (op) -> !uploader.is-placeholder((op.insert or {}).image)
+      quill.setContents json, \silent
+      view.render <[remains]>
     lc.view = view = new ldview do
       root: root
       handler:
@@ -154,14 +166,18 @@ mod = ({root, manager, ctx, data, parent, t}) ->
                   .then ({blob, meta}) -> check-image-terms(meta).then -> {blob, meta}
                   .then ({blob, meta}) ->
                     key = uploader.key!
-                    placeholder = "data:image/svg+xml;base64," + btoa("""<svg data-key="#key" #{uploader.loader}""")
+                    placeholder = uploader.placeholder key
                     sig = uploader.get-sig(placeholder)
-                    uploader.sig[sig] = true
                     image-meta[sig] = meta
                     quill.insertEmbed sel, \image, placeholder
                     upload-files([{blob, sig}], uploader.insert)
                   .catch (e) -> alert e.message or '檔案規格不符'
               input.click!
+
+    # view mode must be inert: not editable, thus no text-change, thus no upload.
+    sync-mode = ~> quill.enable @_mode == \edit
+    @on \mode, sync-mode
+    sync-mode!
 
     # Returns {enabled, pixel, filesize} from config.image.compress, with defaults applied.
     compress-opts = ->
@@ -238,6 +254,28 @@ mod = ({root, manager, ctx, data, parent, t}) ->
         .filter (op) -> op.insert?.image and image-meta[op.insert.image]
         .map (op) -> {url: op.insert.image} <<< image-meta[op.insert.image]
 
+    # setContents replaces the whole document and drops the caret. keep it where it was, so an
+    # upload finishing while the user is still typing doesn't throw them back to the start.
+    set-contents = (nd) ->
+      sel = quill.getSelection!
+      quill.setContents nd, \silent
+      if sel => quill.setSelection sel.index, sel.length, \silent
+
+    # placeholder images are transient UI state, never data. filtering them here means a save
+    # (or autosave) during an upload won't persist a loading spinner into the record, which
+    # would otherwise be re-uploaded on every reload.
+    build-value = ->
+      json = quill.getContents!
+      json.ops = (json.ops or []).filter (op) -> !uploader.is-placeholder((op.insert or {}).image)
+      node = quill.root.cloneNode true
+      Array.from(node.querySelectorAll('img'))
+        .filter (img) -> uploader.is-placeholder img.getAttribute(\src)
+        .for-each (img) -> img.parentNode.removeChild img
+      json: json
+      text: quill.getText!
+      html: DOMPurify.sanitize node.innerHTML
+      images: build-images!
+
     #files contains object {file, ...} where
     #  - `blob`: the file blob
     #  - `...`: additional info which will be passed to `insert`.
@@ -259,7 +297,13 @@ mod = ({root, manager, ctx, data, parent, t}) ->
             lc.file.push f
             if insert => insert file <<< {file: f}
             _(idx + 1)
-      _ 0
+      # mark the widget as uploading so `validate` reports it as invalid, which blocks submit
+      # while leaving local save untouched.
+      lc.uploading = (lc.uploading or 0) + 1
+      @validate!
+      (_ 0).finally ~>
+        lc.uploading = (lc.uploading or 1) - 1
+        @validate!
 
     convert-images = (list) ->
       opts = compress-opts!
@@ -278,7 +322,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
                 nd = quill.getContents!
                 nd.ops = nd.ops.filter (op) ->
                   o.sig != uploader.get-sig((op.insert or {}).image)
-                quill.setContents nd, \silent
+                set-contents nd
                 alert e.message or '檔案規格不符'
                 null
       Promise.all(ps).then (list) -> list.filter -> it
@@ -292,47 +336,67 @@ mod = ({root, manager, ctx, data, parent, t}) ->
         nd.ops
           .filter (op) -> o.sig == uploader.get-sig((op.insert or {}).image)
           .map (op) -> op.insert.image = o.file.url
-        quill.setContents nd, \silent
-        text = quill.getText!
-        html = DOMPurify.sanitize quill.root.innerHTML
-        @value {json: nd, text, html, images: build-images!}
+        set-contents nd
+        @value build-value!
 
       hash: {}
-      sig: {}
-      need-upload: (url = "") -> !!(/data:image/.exec(url) and !uploader.sig[uploader.get-sig url])
-      get-sig: (url) -> (url or '').substring(0,64)
+      # keep `data-mf-ph="1"` as the very first attribute so its base64 encoding is a fixed
+      # prefix, letting us tell our own loading placeholder apart from a real data-url image
+      # by a plain string compare. this marker is what makes a placeholder recognizable across
+      # reloads: it used to be tracked only by an in-memory table, so a placeholder that got
+      # saved into the data (user saved mid-upload) was re-uploaded on every reload.
+      ph-head: "data:image/svg+xml;base64,"
+      ph-mark: "PHN2ZyBkYXRhLW1mLXBoPSIx" # btoa('<svg data-mf-ph="1')
+      is-placeholder: (url) -> (url or '').indexOf(uploader.ph-head + uploader.ph-mark) == 0
+      placeholder: (key) ->
+        uploader.ph-head + btoa("""<svg data-mf-ph="1" data-key="#key" #{uploader.loader}""")
+      need-upload: (url = "") -> !!(/^data:image/.exec(url) and !uploader.is-placeholder(url))
+      get-sig: (url = "") ->
+        if !uploader.is-placeholder(url) => return url.substring(0,64)
+        # decode just the head and pull `data-key` out: the attributes before it already fill
+        # a 64-char window, so a plain substring would give every placeholder the same sig.
+        head = atob url.substring(uploader.ph-head.length, uploader.ph-head.length + 120)
+        "ph:" + ((/data-key="([^"]*)"/.exec(head) or [])[1] or '')
       key: -> "#{Date.now!}-#{Math.random!toString(36)substring(2)}"
       # omit heading `<svg` so we can append attrs easily.
       loader: '''xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid" width="96" height="96" style="background:#fafafa"><g><circle stroke-dasharray="131.95 45.98" r="28" stroke-width="8" stroke="#d7d7d7" fill="none" cy="50" cx="50"><animateTransform keyTimes="0;1" values="0 50 50;360 50 50" dur="1s" repeatCount="indefinite" type="rotate" attributeName="transform"></animateTransform></circle></g></svg>'''
     quill.on \text-change, (d, od, src) ~>
-      text = quill.getText!
-      json = quill.getContents!
-      html = DOMPurify.sanitize quill.root.innerHTML
-      @value {json, text, html, images: build-images!}
+      if @_mode != \edit => return
+      @value build-value!
       view.render <[remains]>
+      # only a user edit (typing / pasting / dropping) may start an upload. other sources are
+      # our own bookkeeping (see the silent setContents calls) or programmatic updates.
+      if src != \user => return
       hash = {}
       list = d.ops
         .filter (o) -> uploader.need-upload (o.insert or {}).image
         .map (o) ->
           key = uploader.key!
           image = o.insert.image
-          placeholder = "data:image/svg+xml;base64," + btoa("""<svg data-key="#key" #{uploader.loader}""")
+          placeholder = uploader.placeholder key
           sig = uploader.get-sig(placeholder)
-          uploader.sig[sig] = true
           hash[image] = {sig, image, placeholder}
       if !list.length => return
+      # take the snapshot after the debounce, not before: anything typed in between would
+      # otherwise be overwritten by the setContents below.
+      <~ debounce 0 .then _
       nd = quill.getContents!
       nd.ops.map (o) -> if (r = hash[(o.insert or {}).image]) => o.insert.image = r.placeholder
-      <~ debounce 0 .then _
-      quill.setContents nd, \silent
+      set-contents nd
 
       convert-images list
         .then (list) ~> upload-files list, uploader.insert
-        .then ~>
-          json = quill.getContents!
-          text = quill.getText!
-          html = DOMPurify.sanitize quill.root.innerHTML
-          @value {json, text, html, images: build-images!}
+        .then ~> @value build-value!
+        .catch (e) ~>
+          console.error e
+          # drop only our own placeholders (matched by sig) so a concurrent batch is untouched.
+          sigs = list.map (.sig)
+          nd = quill.getContents!
+          nd.ops = nd.ops.filter (op) ->
+            sigs.indexOf(uploader.get-sig((op.insert or {}).image)) < 0
+          set-contents nd
+          @value build-value!
+          alert e.message or '圖片上傳失敗'
 
     node = root.querySelector('.ql-color')
     lc.ldcp = new ldcolorpicker(
@@ -355,6 +419,12 @@ mod = ({root, manager, ctx, data, parent, t}) ->
     if eu xor ev => return false
     if eu and ev => return true
     return JSON.stringify(u) == JSON.stringify(v)
+  # a non-empty error list puts the widget in status 2, which
+  #   - blocks submit (@grantdash/prj.tdb checks formmgr.status! before submitting)
+  #   - keeps the widget in the invalid list, so the `check` action can jump to it
+  #   - surfaces the message through @makeform/common's error block
+  # local save doesn't check status, so a draft can still be saved while uploading.
+  validate: -> if (@mod.child or {}).uploading => ["image-uploading"] else []
   content: (v) -> v or {json: {}, text: ""}
   adapt: (opt) ->
     @mod.child._upload = opt.upload
