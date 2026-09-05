@@ -1,5 +1,13 @@
 # Change Logs
 
+## v0.5.2
+
+ - fix: no longer drop placeholders of in-flight uploads when the value is written back
+ - flag the widget as busy for the whole image pipeline, not just the upload itself
+ - recognize placeholders written before the marker existed, and clean them out on load
+ - write the cleaned document back so such a record is repaired on its next save
+
+
 ## v0.5.1
 
  - patch image embeds with a delta instead of rebuilding the document with setContents

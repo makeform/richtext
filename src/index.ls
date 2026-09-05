@@ -112,19 +112,25 @@ mod = ({root, manager, ctx, data, parent, t}) ->
     lc = @mod.child
     @on \change, (v = {}) ~>
       (v.images or []).for-each (img) -> if img.url => image-meta[img.url] = img
-      j = quill.getContents!
-      if JSON.stringify(j) == JSON.stringify(v.json or {}) => return
-      # `\silent`: this is an external value pushed in, not a user edit. without it quill fires
-      # text-change, which would (a) re-run upload detection over imported data-url images and
-      # (b) write back through @value, risking a change -> setContents -> change loop
-      # (currently only guarded by the fragile JSON compare above, since quill normalizes delta).
       json = v.json or {}
       # drop placeholders left in stored data (saved mid-upload, or written by an older version
       # that had no marker): they aren't content, and a spinner that never resolves is worse
-      # than showing nothing. this also cleans such records up on their next save.
+      # than showing nothing.
+      n = (json.ops or []).length
       json.ops = (json.ops or []).filter (op) -> !uploader.is-placeholder((op.insert or {}).image)
+      dropped = n - json.ops.length
+      # compare against our own placeholder-free view of the document, not the raw contents:
+      # the editor legitimately holds placeholders that never appear in the value, and counting
+      # them as a diff would setContents them away while their upload is still in flight.
+      if JSON.stringify(doc-json!) == JSON.stringify(json) => return
+      # `\silent`: this is an external value pushed in, not a user edit. without it quill fires
+      # text-change, which would (a) re-run upload detection over imported data-url images and
+      # (b) write back through @value, risking a change -> setContents -> change loop.
       quill.setContents json, \silent
       view.render <[remains]>
+      # write the cleaned document back, so such a record is repaired on its next save rather
+      # than carrying the dead placeholder until the user happens to edit the field.
+      if dropped => @value build-value!
     lc.view = view = new ldview do
       root: root
       handler:
@@ -161,6 +167,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
                 input.value = null
                 sel = quill.getSelection!index
                 opts = compress-opts!
+                done = mark-pending!
                 (if opts.enabled => compress-image(file, opts.pixel, opts.filesize) else Promise.resolve(file))
                   .then (blob) -> get-image-meta(blob).then (meta) -> {blob, meta}
                   .then ({blob, meta}) -> check-image-terms(meta).then -> {blob, meta}
@@ -172,6 +179,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
                     quill.insertEmbed sel, \image, placeholder
                     upload-files([{blob, sig}], uploader.insert)
                   .catch (e) -> alert e.message or '檔案規格不符'
+                  .finally done
               input.click!
 
     # view mode must be inert: not editable, thus no text-change, thus no upload.
@@ -270,7 +278,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
         if typeof(url) == \string and pred(url) =>
           found := true
           fn delta, op
-        else delta.retain (if typeof(op.insert) == \string => op.insert.length else 1)
+        else delta.retain(if typeof(op.insert) == \string => op.insert.length else 1)
       if !found => return false
       quill.updateContents delta, \silent
       true
@@ -287,12 +295,29 @@ mod = ({root, manager, ctx, data, parent, t}) ->
         (delta) -> delta.delete 1
       )
 
-    # placeholder images are transient UI state, never data. filtering them here means a save
-    # (or autosave) during an upload won't persist a loading spinner into the record, which
-    # would otherwise be re-uploaded on every reload.
-    build-value = ->
+    # mark the widget as busy so `validate` reports it invalid, which blocks submit while
+    # leaving local save untouched. this must cover the whole pipeline - compressing a large
+    # image takes time too, and the field must not look ready while its images are in flight.
+    mark-pending = ~>
+      lc.uploading = (lc.uploading or 0) + 1
+      @validate!
+      done = false
+      ~>
+        if done => return
+        done := true
+        lc.uploading = (lc.uploading or 1) - 1
+        @validate!
+
+    # the document as it should be stored. placeholder images are transient UI state, never
+    # data: dropping them here means a save (or autosave) during an upload won't persist a
+    # loading spinner into the record, which would otherwise be re-uploaded on every reload.
+    doc-json = ->
       json = quill.getContents!
       json.ops = (json.ops or []).filter (op) -> !uploader.is-placeholder((op.insert or {}).image)
+      json
+
+    build-value = ->
+      json = doc-json!
       node = quill.root.cloneNode true
       Array.from(node.querySelectorAll('img'))
         .filter (img) -> uploader.is-placeholder img.getAttribute(\src)
@@ -314,13 +339,8 @@ mod = ({root, manager, ctx, data, parent, t}) ->
           .then (f) ->
             if insert => insert file <<< {file: {} <<< f}
             _(idx + 1)
-      # mark the widget as uploading so `validate` reports it as invalid, which blocks submit
-      # while leaving local save untouched.
-      lc.uploading = (lc.uploading or 0) + 1
-      @validate!
-      (_ 0).finally ~>
-        lc.uploading = (lc.uploading or 1) - 1
-        @validate!
+      done = mark-pending!
+      (_ 0).finally done
 
     convert-images = (list) ->
       opts = compress-opts!
@@ -360,15 +380,25 @@ mod = ({root, manager, ctx, data, parent, t}) ->
       # saved into the data (user saved mid-upload) was re-uploaded on every reload.
       ph-head: "data:image/svg+xml;base64,"
       ph-mark: "PHN2ZyBkYXRhLW1mLXBoPSIx" # btoa('<svg data-mf-ph="1')
-      is-placeholder: (url) -> (url or '').indexOf(uploader.ph-head + uploader.ph-mark) == 0
+      # placeholders written before the marker existed start straight with `data-key`. they are
+      # still out there in stored records, so recognize them too - otherwise they linger in the
+      # document as a spinner that never resolves, and can be re-uploaded if the user moves one.
+      legacy-ph-mark: "PHN2ZyBkYXRhLWtleT0i" # btoa('<svg data-key="')
+      is-placeholder: (url) ->
+        u = url or ''
+        if u.indexOf(uploader.ph-head) != 0 => return false
+        rest = u.substring uploader.ph-head.length
+        rest.indexOf(uploader.ph-mark) == 0 or rest.indexOf(uploader.legacy-ph-mark) == 0
       placeholder: (key) ->
         uploader.ph-head + btoa("""<svg data-mf-ph="1" data-key="#key" #{uploader.loader}""")
       need-upload: (url = "") -> !!(/^data:image/.exec(url) and !uploader.is-placeholder(url))
-      get-sig: (url = "") ->
-        if !uploader.is-placeholder(url) => return url.substring(0,64)
+      get-sig: (url) ->
+        u = url or ''
+        if !uploader.is-placeholder(u) => return u.substring(0,64)
         # decode just the head and pull `data-key` out: the attributes before it already fill
         # a 64-char window, so a plain substring would give every placeholder the same sig.
-        head = atob url.substring(uploader.ph-head.length, uploader.ph-head.length + 120)
+        b64 = u.substring(uploader.ph-head.length, uploader.ph-head.length + 120)
+        head = atob b64.substring(0, b64.length - (b64.length % 4))
         "ph:" + ((/data-key="([^"]*)"/.exec(head) or [])[1] or '')
       key: -> "#{Date.now!}-#{Math.random!toString(36)substring(2)}"
       # omit heading `<svg` so we can append attrs easily.
@@ -390,6 +420,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
           sig = uploader.get-sig(placeholder)
           hash[image] = {sig, image, placeholder}
       if !list.length => return
+      done = mark-pending!
       <~ debounce 0 .then _
       patch-images(
         (url) -> !!hash[url]
@@ -405,6 +436,7 @@ mod = ({root, manager, ctx, data, parent, t}) ->
           remove-images list.map (.sig)
           @value build-value!
           alert e.message or '圖片上傳失敗'
+        .finally done
 
     node = root.querySelector('.ql-color')
     lc.ldcp = new ldcolorpicker(
