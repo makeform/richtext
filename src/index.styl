@@ -32,3 +32,72 @@
     z-index: 1
   .ql-editor
     min-height: 10em
+  .fullscreen-head
+    display: none
+
+// also used as the `popover` element's style, so override the UA popover rules too.
+// `!important` is for bootstrap's `.position-relative`, which is `!important` itself.
+.mf-richtext-quill .m-edit.fullscreen
+  position: fixed !important
+  inset: 2em
+  z-index: 3000 // same layer as host modals; only matters without popover support
+  display: flex
+  flex-direction: column
+  width: auto
+  height: auto
+  max-width: 1200px
+  margin: auto
+  padding: 1em
+  border: 0
+  border-radius: .5em
+  overflow: hidden
+  color: inherit
+  background: #fff
+  box-shadow: 0 0 0 100vmax rgba(0,0,0,.5)
+  .fullscreen-head
+    display: flex
+    flex: none
+    align-items: flex-start
+    justify-content: space-between
+    margin-bottom: .5em
+  .fullscreen-close
+    flex: none
+    width: 1.5em
+    height: 1.5em
+    margin-left: 1em
+    padding: 0
+    border: 0
+    background: none
+    color: #444
+    cursor: pointer
+    &:hover
+      color: #06c
+    svg
+      display: block
+      width: 100%
+      height: 100%
+      fill: none
+      stroke: currentColor
+      stroke-width: 2
+      stroke-linecap: round
+  .fullscreen-title
+    flex: 1
+    min-width: 0
+    font-weight: bold
+    // the title is rendered by hitf, which marks its node as `.ql-editor`
+    height: auto
+    min-height: 0
+    padding: 0
+    overflow: visible
+  .ql-toolbar
+    flex: none
+  .ql-container
+    flex: 1
+    min-height: 0
+    height: auto
+  .remains
+    flex: none
+    margin: .5em 0 0
+  @media (max-width: 767px)
+    inset: .5em
+    padding: .5em

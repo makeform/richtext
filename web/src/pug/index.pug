@@ -138,6 +138,10 @@ html
           button#mode-view mode: view
           button#mode-config mode: config
         .grp
+          button#fs-config fullscreen config: on
+          button#fs-trap transform ancestor: off
+          p.hint a transform ancestor would trap a plain position: fixed; popover must escape it.
+        .grp
           button#inject inject saved placeholder (dirty data)
           button#check run formmgr check
           button#submit try submit
@@ -368,6 +372,18 @@ html
         on-click "\#mode-#m", ->
           lc.itf.mode m
           log "mode -> #m"
+
+      on-click \#fs-config, ->
+        enabled = meta.config.{}fullscreen.enabled == false
+        meta.config.fullscreen.enabled = enabled
+        lc.itf.deserialize meta
+        it.target.textContent = "fullscreen config: #{if enabled => 'on' else 'off'}"
+        it.target.classList.toggle \on, !enabled
+      on-click \#fs-trap, ->
+        trapped = !$('#widget').style.transform
+        $('#widget').style.transform = if trapped => 'translateX(0)' else ''
+        it.target.textContent = "transform ancestor: #{if trapped => 'on' else 'off'}"
+        it.target.classList.toggle \on, trapped
 
       on-click \#inject, ->
         lc.itf.value {

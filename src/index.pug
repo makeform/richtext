@@ -4,7 +4,11 @@ div
     include:stylus index.styl
   script(type="@plotdb/block"): include:lsc index.ls
   div(plug="body"): .mf-richtext-quill
-    .m-edit.position-relative
+    .m-edit.position-relative(ld="editor")
+      .fullscreen-head
+        .fullscreen-title(ld="fullscreen-title")
+        button.fullscreen-close(ld="fullscreen-close",type="button")
+          svg(viewBox="0 0 18 18"): path(d="M4 4L14 14M14 4L4 14")
       div(ld="input")
       .remains.text-muted(ld="remains")
       .d-flex: .p-1.text-danger.rounded(ld-each="error")

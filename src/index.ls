@@ -47,8 +47,11 @@ module.exports =
         "已寫": "written:"
         "字": "word(s)"
         "image-uploading": "Uploading image. Please wait until it's done."
+        "fullscreen-enter": "Expand editor"
+        "fullscreen-exit": "Collapse editor"
         config:
           hint: name: 'Character Count Hint', desc: "Show character count and limit hints."
+          fullscreen: enabled: name: 'Fullscreen Editing', desc: "Show a button to edit in a large popup. Default: enabled."
           image:
             compress:
               enabled: name: 'Image Compression', desc: "Compress images before uploading. Default: enabled."
@@ -61,8 +64,11 @@ module.exports =
         "已寫": "已寫"
         "字": "字"
         "image-uploading": "圖片上傳中，請稍候。"
+        "fullscreen-enter": "放大編輯"
+        "fullscreen-exit": "收合"
         config:
           hint: name: '字數提示', desc: "啟用字數提示"
+          fullscreen: enabled: name: '放大編輯', desc: "顯示放大編輯按鈕，預設啟用。"
           image:
             compress:
               enabled: name: '圖片壓縮', desc: "上傳前壓縮圖片，預設啟用。"
@@ -90,6 +96,7 @@ module.exports =
   client: (bid) ->
     meta: config:
       hint: enabled: type: \boolean, name: \config.hint.name, desc: \config.hint.desc
+      fullscreen: enabled: type: \boolean, default: true, name: \config.fullscreen.enabled.name, desc: \config.fullscreen.enabled.desc
       image: compress:
         enabled: type: \boolean, name: \config.image.compress.enabled.name, desc: \config.image.compress.enabled.desc
         filesize: type: \number, name: \config.image.compress.filesize.name, desc: \config.image.compress.filesize.desc
@@ -133,8 +140,18 @@ mod = ({root, manager, ctx, data, parent, t}) ->
       if dropped => @value build-value!
     lc.view = view = new ldview do
       root: root
+      action: click:
+        "fullscreen-close": ->
+          exit-fullscreen!
+          # the button is hidden now, so don't leave the focus on it.
+          quill.focus!
       handler:
         content: ({node}) -> node.innerHTML = DOMPurify.sanitize quill.root.innerHTML
+        editor: -> sync-fullscreen!
+        "fullscreen-title": @mod.hitf.render {path: \title}
+        "fullscreen-close": ({node}) ->
+          node.setAttribute \title, t(\fullscreen-exit)
+          node.setAttribute \aria-label, t(\fullscreen-exit)
         remains: ({node}) ~>
           enabled = !!(@mod.info.config.hint or {}).enabled
           node.classList.toggle \d-none, !enabled
@@ -154,8 +171,10 @@ mod = ({root, manager, ctx, data, parent, t}) ->
             <[bold italic underline]> /* ++ <[color]> */,
             [{list: 'ordered'}, {list: 'bullet'}, {align: []}]
             <[link image]>
+            <[fullscreen]>
           ]
           handlers:
+            fullscreen: -> if lc.fullscreen => exit-fullscreen! else enter-fullscreen!
             image: ~>
               input = document.createElement \input
               input.setAttribute \type, \file
@@ -182,8 +201,71 @@ mod = ({root, manager, ctx, data, parent, t}) ->
                   .finally done
               input.click!
 
+    # enlarge the editor where it is, instead of opening a second quill in a popup: with a single
+    # instance, in-flight uploads, placeholders and `image-meta` need no syncing at all. it also
+    # stays in place in the DOM since moving it out of the widget loses the csscope scope.
+    # the popover puts it in the top layer so ancestors can't trap it - a `transform` ancestor
+    # would make a `position: fixed` element relative to that ancestor. without popover support
+    # we just live with `position: fixed`.
+    editor = view.get \editor
+    fullscreen-btn = quill.getModule(\toolbar).container.querySelector \.ql-fullscreen
+    fullscreen-icon = (d) ->
+      """<svg viewBox="0 0 18 18"><path class="ql-stroke" fill="none" d="#d"></path></svg>"""
+    fullscreen-icons =
+      enter: fullscreen-icon "M3 7V3H7M11 3H15V7M15 11V15H11M7 15H3V11"
+      exit: fullscreen-icon "M7 3V7H3M11 3V7H15M15 11H11V15M7 15V11H3"
+    set-fullscreen-btn = (state) ->
+      fullscreen-btn.innerHTML = fullscreen-icons[state]
+      fullscreen-btn.setAttribute \title, t("fullscreen-#state")
+    set-fullscreen-btn \enter
+
+    fullscreen-enabled = ~>
+      cfg = @mod.info.config.fullscreen or {}
+      if cfg.enabled? => !!cfg.enabled else true
+
+    # capture phase: quill's link tooltip and pickers close on their own escape handler, which
+    # would otherwise run first and make it look like nothing was there to close.
+    fullscreen-key = (e) ->
+      if e.key != \Escape => return
+      # escape during IME composition just cancels the composition.
+      if e.isComposing or e.keyCode == 229 => return
+      if editor.querySelector('.ql-tooltip.ql-editing:not(.ql-hidden), .ql-picker.ql-expanded') => return
+      exit-fullscreen!
+
+    enter-fullscreen = ~>
+      if lc.fullscreen or @_mode != \edit or !fullscreen-enabled! => return
+      # the editor leaves the flow; hold its space so that the page behind doesn't jump.
+      editor.parentNode.style.minHeight = "#{editor.offsetHeight}px"
+      lc.fullscreen = overflow: document.documentElement.style.overflow
+      document.documentElement.style.overflow = \hidden
+      editor.classList.add \fullscreen
+      # only set while open: UA rules hide any element with a `popover` attribute when it's closed.
+      if editor.showPopover =>
+        editor.setAttribute \popover, \manual
+        editor.showPopover!
+      document.addEventListener \keydown, fullscreen-key, true
+      set-fullscreen-btn \exit
+
+    exit-fullscreen = ->
+      if !lc.fullscreen => return
+      document.removeEventListener \keydown, fullscreen-key, true
+      # removing the attribute hides the popover as well.
+      editor.removeAttribute \popover
+      editor.classList.remove \fullscreen
+      editor.parentNode.style.minHeight = ''
+      document.documentElement.style.overflow = lc.fullscreen.overflow
+      lc.fullscreen = null
+      set-fullscreen-btn \enter
+
+    sync-fullscreen = ->
+      enabled = fullscreen-enabled!
+      fullscreen-btn.parentNode.style.display = if enabled => '' else \none
+      if !enabled => exit-fullscreen!
+
     # view mode must be inert: not editable, thus no text-change, thus no upload.
-    sync-mode = ~> quill.enable @_mode == \edit
+    sync-mode = ~>
+      quill.enable @_mode == \edit
+      if @_mode != \edit => exit-fullscreen!
     @on \mode, sync-mode
     sync-mode!
 
