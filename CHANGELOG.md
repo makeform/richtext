@@ -1,5 +1,18 @@
 # Change Logs
 
+## v0.6.1
+
+ - tweaks:
+   - the fullscreen popup no longer closes on Escape; it closes only by its close buttons
+
+
+## v0.6.0
+
+ - features:
+   - add a toolbar button to edit in a large popup. available in edit mode only, and can be
+     turned off with `config.fullscreen.enabled`.
+
+
 ## v0.5.0
 
  - features:

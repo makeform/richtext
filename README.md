@@ -7,6 +7,8 @@ Richtext input widget. Based on Quilljs.
 
  - `hint`: an object controlling the character count hint display.
    - `enabled`: boolean, default `false`. when `true`, shows a small hint below the editor indicating how many characters remain or have been written, based on any active `text-length` term.
+ - `fullscreen`: an object controlling the fullscreen editing button in the toolbar.
+   - `enabled`: boolean, default `true`. when `false`, the button is hidden and the editor can't be enlarged.
  - `image`: an object controlling image handling behavior.
    - `compress`: an object controlling image compression before upload. when omitted entirely, compression is enabled with default values.
      - `enabled`: boolean, default `true`. when `false`, disables compression and uploads images as-is.
