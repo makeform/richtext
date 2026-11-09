@@ -223,15 +223,6 @@ mod = ({root, manager, ctx, data, parent, t}) ->
       cfg = @mod.info.config.fullscreen or {}
       if cfg.enabled? => !!cfg.enabled else true
 
-    # capture phase: quill's link tooltip and pickers close on their own escape handler, which
-    # would otherwise run first and make it look like nothing was there to close.
-    fullscreen-key = (e) ->
-      if e.key != \Escape => return
-      # escape during IME composition just cancels the composition.
-      if e.isComposing or e.keyCode == 229 => return
-      if editor.querySelector('.ql-tooltip.ql-editing:not(.ql-hidden), .ql-picker.ql-expanded') => return
-      exit-fullscreen!
-
     enter-fullscreen = ~>
       if lc.fullscreen or @_mode != \edit or !fullscreen-enabled! => return
       # the editor leaves the flow; hold its space so that the page behind doesn't jump.
@@ -243,12 +234,10 @@ mod = ({root, manager, ctx, data, parent, t}) ->
       if editor.showPopover =>
         editor.setAttribute \popover, \manual
         editor.showPopover!
-      document.addEventListener \keydown, fullscreen-key, true
       set-fullscreen-btn \exit
 
     exit-fullscreen = ->
       if !lc.fullscreen => return
-      document.removeEventListener \keydown, fullscreen-key, true
       # removing the attribute hides the popover as well.
       editor.removeAttribute \popover
       editor.classList.remove \fullscreen

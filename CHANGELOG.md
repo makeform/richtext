@@ -1,5 +1,11 @@
 # Change Logs
 
+## v0.6.1
+
+ - tweaks:
+   - the fullscreen popup no longer closes on Escape; it closes only by its close buttons
+
+
 ## v0.6.0
 
  - features:
