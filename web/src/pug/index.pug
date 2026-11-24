@@ -133,6 +133,10 @@ html
           button#paste-3 simulate paste — 3 images
           button#paste-big simulate paste — oversized image
           p.hint dispatches a real paste event onto the editor, so quill sees source `user`.
+          button#drop-2 simulate drop — 2 image files
+          button#paste-file simulate paste — 1 image file (screenshot)
+          p.hint files go through quill's uploader module ( drop at the end of the text ).
+          p.hint click an image to resize it ( handle at the bottom right; double click it to reset ).
         .grp
           button#mode-edit mode: edit
           button#mode-view mode: view
@@ -143,6 +147,10 @@ html
           p.hint a transform ancestor would trap a plain position: fixed; popover must escape it.
         .grp
           button#inject inject saved placeholder (dirty data)
+          button#inject-table inject a table written by another engine
+          button#table-config table config: on
+          button#preset preset: basic
+          p.hint add `?strict=1` to the url to start with `config.strict` ( read at init ).
           button#check run formmgr check
           button#submit try submit
           p.hint “inject” pushes the exact delta you found in production, through the widget value.
@@ -201,7 +209,8 @@ html
           iv = setInterval (->
             t += 100
             if lc.verbose => log "upload ##n progress #{Math.round(100 * t / (lc.delay or 1))}%", \#999
-            if progress => progress {loaded: t, total: lc.delay}
+            # same shape as the real host ( ld$.xhr in invest's apply page )
+            if progress => progress {percent: Math.min(1, t / (lc.delay or 1))}
           ), 100
           setTimeout (->
             clearInterval iv
@@ -263,6 +272,32 @@ html
         root.dispatchEvent new ClipboardEvent \paste, {clipboardData: dt, bubbles: true, cancelable: true}
         log "pasted #n image(s) @ #{size}px"
 
+      image-file = (size, label) ->
+        url = make-image size, size, label
+        bin = atob url.split(',')[1]
+        buf = new Uint8Array bin.length
+        for i from 0 til bin.length => buf[i] = bin.charCodeAt i
+        new File [buf], "img-#label.png", {type: \image/png}
+
+      drop-files = (n) ->
+        root = editor!
+        if !root => return log "editor not ready", \#a11
+        dt = new DataTransfer!
+        for i from 0 til n => dt.items.add image-file(300, 10 + i)
+        last = root.lastElementChild or root
+        r = last.getBoundingClientRect!
+        root.dispatchEvent new DragEvent \drop, {dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.right - 2, clientY: r.top + r.height / 2}
+        log "dropped #n file(s)"
+
+      paste-file = ->
+        root = editor!
+        if !root => return log "editor not ready", \#a11
+        dt = new DataTransfer!
+        dt.items.add image-file(500, 20)
+        root.focus!
+        root.dispatchEvent new ClipboardEvent \paste, {clipboardData: dt, bubbles: true, cancelable: true}
+        log "pasted 1 file"
+
       # ---- helpers exposed for browser-driven checks --------------------------
       ph-prefix = "data:image/svg+xml;base64,PHN2ZyBkYXRhLW1mLXBoPSIx"
       classify = (u) ->
@@ -286,6 +321,8 @@ html
         ed: editor
         classify: classify
         paste: paste-images
+        drop: drop-files
+        pasteFile: paste-file
         type: (s) -> set-caret true; document.execCommand \insertText, false, s
         clear: -> set-caret false; document.execCommand \delete
         rmImage: (idx = 0) ->
@@ -344,11 +381,12 @@ html
           if typeof(op.insert) == \string => {text: op.insert.substring(0, 40)}
           else if (op.insert or {}).image? =>
             u = op.insert.image
-            {image: if u.length > 60 => u.substring(0, 56) + "..." else u}
+            {image: (if u.length > 60 => u.substring(0, 56) + "..." else u)} <<< (op.attributes or {})
           else op
         $('#value').textContent = JSON.stringify({
           ops: brief
           images: (v.images or []).length
+          table: v.table
           html: (v.html or '').substring(0, 200)
         }, null, 1)
 
@@ -367,6 +405,8 @@ html
       on-click \#paste-1, -> paste-images 1
       on-click \#paste-3, -> paste-images 3
       on-click \#paste-big, -> paste-images 1, 2400
+      on-click \#drop-2, -> drop-files 2
+      on-click \#paste-file, -> paste-file!
 
       <[edit view config]>.map (m) ->
         on-click "\#mode-#m", ->
@@ -397,6 +437,34 @@ html
           images: []
         }
         log "injected saved placeholder"
+
+      # a value as quill-table-better would save it: its delta formats mean nothing to table-up,
+      # so the widget has to rebuild it from the html ( merged first row, custom widths ).
+      on-click \#inject-table, ->
+        lc.itf.value {
+          json: ops: [
+            * insert: "foreign\n"
+            * insert: "A+B", attributes: {"table-cell-block": "cell-x", "table-cell": {"data-row": "row-1", colspan: "2"}}
+            * insert: "\n", attributes: {"table-cell-block": "cell-x"}
+          ]
+          text: "foreign\nA+B\nC\nD\nE\n"
+          html: '<p>foreign</p><table class="ql-table-better" style="width: 100%"><tbody><tr><td colspan="2" width="66%"><p>A+B</p></td><td width="34%"><p>C</p></td></tr><tr><td><p>D</p></td><td><p>E</p></td><td><p><br></p></td></tr></tbody></table><p><br></p>'
+          table: "table-better@1"
+          images: []
+        }
+        log "injected a table-better value"
+      if /strict=1/.test(location.search) => meta.config.strict = true
+      window.meta = meta
+      on-click \#preset, ->
+        list = <[basic minimal full]>
+        meta.config.preset = list[(list.indexOf(meta.config.preset or \basic) + 1) % list.length]
+        lc.itf.deserialize meta
+        it.target.textContent = "preset: #{meta.config.preset}"
+      on-click \#table-config, ->
+        enabled = meta.config.{}table.enabled == false
+        meta.config.table.enabled = enabled
+        lc.itf.deserialize meta
+        it.target.textContent = "table config: #{if enabled => 'on' else 'off'}"
 
       on-click \#check, ->
         fmgr.check null, {now: true, force: true} .then (r) ->

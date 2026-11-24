@@ -101,3 +101,58 @@
   @media (max-width: 767px)
     inset: .5em
     padding: .5em
+
+// overlay over the editor for upload progress and the image resize frame. the container is
+// `position: relative` ( quill snow ), so positions are relative to it.
+.mf-richtext-quill .mf-rt-layer
+  position: absolute
+  inset: 0
+  pointer-events: none
+  overflow: hidden
+  z-index: 1
+.mf-richtext-quill .mf-rt-progress
+  position: absolute
+  height: 6px
+  border-radius: 3px
+  background: rgba(0,0,0,.12)
+  overflow: hidden
+  > div
+    height: 100%
+    background: #0067ad
+    transition: width .2s
+  // compressing or waiting for its turn: no ratio yet.
+  &.pending > div
+    width: 30% !important
+    animation: mf-rt-pending 1.2s ease-in-out infinite
+@keyframes mf-rt-pending
+  0%
+    transform: translateX(-100%)
+  100%
+    transform: translateX(340%)
+.mf-richtext-quill .mf-rt-resizer
+  display: none
+  position: absolute
+  outline: 2px solid #0067ad
+  outline-offset: -1px
+.mf-richtext-quill .mf-rt-resizer-handle
+  position: absolute
+  right: -7px
+  bottom: -7px
+  width: 14px
+  height: 14px
+  border: 2px solid #fff
+  border-radius: 50%
+  background: #0067ad
+  cursor: nwse-resize
+  pointer-events: auto
+  touch-action: none
+.mf-richtext-quill .mf-rt-resizer-label
+  position: absolute
+  left: 4px
+  top: 4px
+  padding: 0 4px
+  border-radius: 3px
+  font-size: 11px
+  line-height: 1.6
+  color: #fff
+  background: rgba(0,0,0,.6)

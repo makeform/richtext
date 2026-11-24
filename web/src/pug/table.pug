@@ -1,0 +1,233 @@
+doctype html
+//- table plugin trial: quill-table-better vs quill-table-up, on our @plotdb/quill ( quill 2.0.3 ).
+//- both register their formats on the global Quill, so only one is loaded per page ( ?lib= ).
+html
+  head
+    meta(charset="utf-8")
+    meta(name="viewport",content="width=device-width,initial-scale=1")
+    title richtext table trial
+    link(rel="stylesheet",href="/assets/lib/@plotdb/quill/main/dist/quill.snow.css")
+    script.
+      window.__errs = [];
+      window.addEventListener('error', function(e){
+        window.__errs.push((e.message||'') + ' @ ' + (e.filename||'').split('/').pop() + ':' + e.lineno);
+      });
+    style: :stylus
+      *
+        box-sizing: border-box
+      body
+        margin: 0
+        font-family: -apple-system, "Helvetica Neue", sans-serif
+        font-size: 14px
+        color: #222
+        background: #f4f5f7
+      .top
+        display: flex
+        gap: 8px
+        align-items: center
+        padding: 12px 12px 0
+        a
+          padding: 4px 10px
+          border-radius: 4px
+          color: #0067ad
+          text-decoration: none
+          border: 1px solid #cfd3d9
+          background: #fff
+          &.on
+            background: #0067ad
+            border-color: #0067ad
+            color: #fff
+        .note
+          color: #6a7280
+          font-size: 12px
+      .wrap
+        display: grid
+        grid-template-columns: 1fr 1fr
+        gap: 12px
+        padding: 12px
+      .col
+        background: #fff
+        border: 1px solid #e2e4e8
+        border-radius: 6px
+        padding: 12px
+        min-width: 0
+      h2
+        margin: 0 0 8px
+        font-size: 13px
+        letter-spacing: .06em
+        color: #6a7280
+      .btns
+        display: flex
+        flex-wrap: wrap
+        gap: 6px
+        margin: 8px 0
+        button
+          padding: 4px 8px
+          font-size: 12px
+          border: 1px solid #cfd3d9
+          border-radius: 4px
+          background: #fff
+          cursor: pointer
+          &:hover
+            background: #f0f2f5
+      #editor
+        min-height: 320px
+      pre
+        margin: 0
+        max-height: 260px
+        overflow: auto
+        font-size: 11px
+        line-height: 1.45
+        white-space: pre-wrap
+        word-break: break-all
+        background: #fafbfc
+        padding: 6px
+      // the read-only render, as our widget's view mode does it: sanitized html in a .ql-editor
+      #view
+        border: 1px solid #e2e4e8
+        min-height: 120px
+        table
+          border-collapse: collapse
+        td, th
+          border: 1px solid #000
+          padding: 2px 5px
+      .hint
+        font-size: 12px
+        color: #6a7280
+        line-height: 1.6
+        margin: 4px 0 0
+  body
+    .top
+      a#lib-better(href="?lib=better") quill-table-better 1.2.3
+      a#lib-up(href="?lib=up") quill-table-up 3.6.0
+      a#lib-builtin(href="?lib=builtin") quill 內建 table
+      span.note 每個套件各自註冊格式到全域 Quill，所以一頁只載一個。
+    .wrap
+      .col
+        h2 編輯
+        #editor
+        .btns
+          button#ins 插入 3×3 表格
+          button#reload-set 存檔後重載（setContents）
+          button#reload-html 存檔後重載（從 html）
+          button#clear 清空
+        p.hint#lib-hint
+      .col
+        h2 唯讀顯示（DOMPurify 後的 html，同 widget 的 view mode）
+        #view.ql-editor
+        h2(style="margin-top:12px") html
+        pre#html
+        h2(style="margin-top:12px") delta
+        pre#delta
+
+    script(src="/assets/lib/dompurify/main/dist/purify.min.js")
+    script(src="/assets/lib/@plotdb/quill/main/dist/quill.js")
+    script.
+      (function(){
+        var lib = (new URLSearchParams(location.search)).get('lib') || 'better';
+        document.getElementById('lib-' + lib).classList.add('on');
+        var css = {
+          better: ['/assets/lib/quill-table-better/main/dist/quill-table-better.css'],
+          up: ['/assets/lib/quill-table-up/main/dist/index.css', '/assets/lib/quill-table-up/main/dist/table-creator.css'],
+          builtin: []
+        }[lib];
+        var js = {
+          better: '/assets/lib/quill-table-better/main/dist/quill-table-better.js',
+          up: '/assets/lib/quill-table-up/main/dist/index.umd.js',
+          builtin: null
+        }[lib];
+        css.forEach(function(h){
+          var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = h;
+          document.head.appendChild(l);
+        });
+        window.__lib = lib;
+        window.__libReady = new Promise(function(res){
+          if (!js) return res();
+          var s = document.createElement('script'); s.src = js; s.onload = res;
+          document.body.appendChild(s);
+        });
+      })();
+    script: :lsc
+      <~ window.__lib-ready.then _
+      lib = window.__lib
+      $ = (s) -> document.querySelector s
+      base-toolbar = [
+        [{header: [1, 2, false]}]
+        <[bold italic underline]>
+        [{list: 'ordered'}, {list: 'bullet'}, {align: []}]
+        <[link image]>
+      ]
+      cfg = switch lib
+      | \better =>
+        Quill.register {'modules/table-better': QuillTableBetter}, true
+        hint: "工具列表格鈕插入；點儲存格出現選單（欄、列、合併、表格屬性、儲存格屬性）；表格右下角拖曳整體大小；欄線可拖曳調寬。"
+        insert: (q) -> q.getModule(\table-better).insertTable 3, 3
+        opt:
+          modules:
+            table: false
+            toolbar: base-toolbar ++ [[\table-better]]
+            'table-better':
+              language: \zh_TW
+              menus: <[column row merge table cell wrap copy delete]>
+              toolbarTable: true
+            keyboard: bindings: QuillTableBetter.keyboardBindings
+      | \up =>
+        T = window.TableUp
+        Quill.register {"modules/#{T.TableUp.moduleName}": T.TableUp}, true
+        hint: "工具列表格鈕選格數插入；拖欄線、列線調寬高；拖選多格後右鍵合併／分割、背景色、框線色；表格左上可整體縮放。"
+        insert: (q) -> q.getModule(T.TableUp.moduleName).insertTable 3, 3
+        opt:
+          modules:
+            toolbar: base-toolbar ++ [[{"#{T.TableUp.toolName}": []}]]
+            "#{T.TableUp.moduleName}":
+              full: true
+              customSelect: T.defaultCustomSelect
+              modules: [
+                {module: T.TableResizeLine}
+                {module: T.TableResizeScale}
+                {module: T.TableAlign}
+                {module: T.TableSelection}
+                {module: T.TableMenuContextmenu}
+              ]
+      | _ =>
+        hint: "Quill 2 內建 table 模組：只有 API（insertTable / insertRowAbove / deleteColumn …），沒有 UI，也不能調欄寬、合併。"
+        insert: (q) -> q.getModule(\table).insertTable 3, 3
+        opt:
+          modules:
+            table: true
+            toolbar: base-toolbar
+
+      $('#lib-hint').textContent = cfg.hint
+      quill = new Quill \#editor, {theme: \snow} <<< cfg.opt
+      window.quill = quill
+
+      render = ->
+        html = DOMPurify.sanitize quill.root.innerHTML
+        $('#view').innerHTML = html
+        $('#html').textContent = html
+        d = JSON.stringify quill.getContents!
+        $('#delta').textContent = "#{d.length} bytes\n" + JSON.stringify(quill.getContents!, null, 1)
+      quill.on \text-change, -> clearTimeout(window.__rt); window.__rt = setTimeout render, 150
+
+      saved = null
+      $('#ins').addEventListener \click, ->
+        quill.focus!
+        if !quill.getSelection! => quill.setSelection quill.getLength! - 1, 0
+        cfg.insert quill
+      # what the widget does on load: `quill.setContents json, \silent`
+      $('#reload-set').addEventListener \click, ->
+        saved := JSON.parse JSON.stringify quill.getContents!
+        quill.setContents [], \silent
+        quill.setContents saved, \silent
+        render!
+      # the other route a stored value could take: our saved `html`, through quill's clipboard
+      $('#reload-html').addEventListener \click, ->
+        html = DOMPurify.sanitize quill.root.innerHTML
+        quill.setContents [], \silent
+        delta = quill.clipboard.convert {html}
+        quill.updateContents delta, \user
+        render!
+      $('#clear').addEventListener \click, -> quill.setContents [], \user
+
+      window.T = {quill, cfg, render}
+      render!
