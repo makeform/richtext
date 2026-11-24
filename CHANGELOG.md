@@ -1,5 +1,23 @@
 # Change Logs
 
+## v0.7.0
+
+ - features:
+   - presets of tools ( `config.preset` : `minimal` , `basic` ( default ) , `full` ) , each tool can be turned on / off
+     by `config.tools` . `config.strict` limits the formats to the enabled tools ( off by default, so stored values
+     are kept as they are ) . `config.fullscreen.enabled` / `config.table.enabled` still work.
+   - tables by quill-table-up, on by default ( in `basic` ) : insert, resize columns / rows, merge / split cells,
+     background and border colors. context menu items by `config.table.menu` . the engine is pluggable ( `table-engines` ); the value records which one
+     wrote its tables ( `table` ), and a value from another engine is loaded from its html.
+   - resize images: click an image for a frame with a handle; the width is stored as a percentage ( `width` attribute ).
+   - upload progress: a bar over each image placeholder, indeterminate while compressing or queued.
+   - one image pipeline for the toolbar ( now multiple files ), drop, pasted files and pasted html. dropped / pasted
+     files no longer go through a base64 data url first. accepts png, jpeg, gif and webp.
+ - bug fix:
+   - drop in view mode no longer inserts anything.
+   - don't re-enable an already enabled editor ( table-up stacks a second ui on each enable ).
+   - tables kept in quill's own table format ( pasted into an older version ) are loaded from html.
+
 ## v0.6.1
 
  - tweaks:
